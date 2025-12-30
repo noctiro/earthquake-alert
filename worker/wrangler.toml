@@ -1,0 +1,33 @@
+name = "earthquake-alert"
+main = "index.js"
+compatibility_date = "2025-12-28"
+
+# 静态资产配置
+[assets]
+directory = "./static"
+
+# 环境变量
+[vars]
+# 后端服务器 URL（开发环境）
+# 支持 HTTP 和 HTTPS 协议
+BACKEND_URL = "http://localhost:30010"
+
+# 生产环境配置
+# 强烈建议使用 HTTPS 以确保通信安全
+# [env.production.vars]
+# BACKEND_URL = "https://your-backend-server.com"
+
+# [observability]
+# enabled = false
+# head_sampling_rate = 1
+
+# [observability.logs]
+# enabled = true
+# head_sampling_rate = 1
+# persist = true
+# invocation_logs = true
+
+# [observability.traces]
+# enabled = false
+# persist = true
+# head_sampling_rate = 1

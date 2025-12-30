@@ -1,0 +1,34 @@
+# Rust 编译产物
+target
+backend/target
+Cargo.lock
+
+# Node.js
+node_modules
+worker/node_modules
+
+# Cloudflare Worker
+.wrangler
+worker/.wrangler
+
+# 数据库
+backend/data
+*.db
+
+# 环境变量
+.env
+backend/.env
+
+# 日志
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
