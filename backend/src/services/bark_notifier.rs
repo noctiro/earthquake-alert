@@ -86,7 +86,7 @@ impl BarkNotifier {
 
         // Bark 推送格式: /:key/:title/:subtitle/:body?params
         let url = format!(
-            "{}/{}/{}/{}/{}?group=地震预警&level=critical&volume=5",
+            "{}/{}/{}/{}/{}?group=地震预警&level=critical&volume=10",
             self.api_url,
             urlencoding::encode(bark_id),
             title_encoded,
