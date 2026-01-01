@@ -24,7 +24,6 @@ cp .env.example .env
 
 # 构建与运行
 cargo build --release
-mkdir -p data
 ./target/release/earthquake-alert-backend
 
 ```
