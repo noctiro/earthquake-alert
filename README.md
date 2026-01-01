@@ -1,23 +1,15 @@
 # 地震预警 Bark 订阅系统
 
-基于 Rust 后端 + Cloudflare Workers 的地震预警实时推送服务。使用 GeoHash 空间索引实现高效震度匹配，通过 Bark App 实时推送到苹果设备。
+基于 Rust 后端 + Cloudflare Workers 的地震预警实时推送服务。使用 GeoHash 空间索引实现匹配，通过 Bark App 实时推送。
 
 示例: [http://eew.noctiro.moe](http://eew.noctiro.moe)
 
-## ✨ 特性
-
-- **实时监控**：通过 WebSocket 毫秒级接收地震预警
-- **智能推送**：基于用户 GeoHash 位置和预设震度阈值，仅推送有感地震
-- **高性能**：Rust + sled 嵌入式数据库，极速响应
-- **全球加速**：Cloudflare Workers 前端托管，低延迟访问
-- **极简设计**：原生 HTML/JS，无需复杂构建流程
-
-## 🛠 技术栈
+## 技术栈
 
 * **后端**: Rust, Axum, sled (DB), tokio-tungstenite (WS)
 * **前端**: Cloudflare Workers, 原生 JS/HTML, CartoCDN (地图)
 
-## 🚀 部署指南
+## 部署
 
 ### 1. 后端部署 (Rust)
 
@@ -53,7 +45,7 @@ wrangler deploy --env production
 
 ```
 
-## ⚙️ 配置说明
+## 配置说明
 
 ### 后端环境变量 (.env)
 
@@ -64,9 +56,7 @@ wrangler deploy --env production
 | `DB_PATH` | `./data/earthquake.db` | 数据库路径 |
 | `BARK_API_URL` | `https://api.day.app` | Bark 服务器地址 |
 
-## 🔗 API 接口
-
-主要用于调试，前端页面会自动处理这些请求。
+## 后端 API 接口
 
 * **订阅**: `POST /api/subscribe`
 ```json
@@ -79,7 +69,7 @@ wrangler deploy --env production
 * **状态**: `GET /health`
 * **统计**: `GET /api/stats`
 
-## 🙏 致谢
+## 致谢
 
 * 数据源：[wolfx.jp](https://ws-api.wolfx.jp)
 * 推送服务：[Bark](https://github.com/Finb/Bark)

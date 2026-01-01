@@ -176,7 +176,7 @@ mod tests {
     fn test_short_distance() {
         // 北京到上海 约 1067 km
         let dist = vincenty_distance(39.9042, 116.4074, 31.2304, 121.4737).unwrap();
-        assert!((dist - 1067.0).abs() < 10.0);
+        assert!((dist - 1067.0).abs() < 2.0);
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
         // 纽约 (JFK) 到伦敦 (LHR) 约 5555 km (使用 Vincenty 公式)
         let dist = vincenty_distance(40.6413, -73.7781, 51.4700, -0.4543).unwrap();
         assert!(
-            (dist - 5555.0).abs() < 20.0,
+            (dist - 5555.0).abs() < 2.0,
             "Expected ~5555 km, got {} km",
             dist
         );
@@ -242,7 +242,7 @@ mod tests {
     fn test_across_prime_meridian() {
         // 伦敦到巴黎
         let dist = vincenty_distance(51.5074, -0.1278, 48.8566, 2.3522).unwrap();
-        assert!((dist - 344.0).abs() < 10.0);
+        assert!((dist - 344.0).abs() < 2.0);
     }
 
     #[test]
