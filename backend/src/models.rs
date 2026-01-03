@@ -114,7 +114,7 @@ pub struct SichuanEew {
     #[serde(rename = "Depth")]
     pub depth: f64,
     #[serde(rename = "MaxIntensity")]
-    pub max_intensity: i32,
+    pub max_intensity: f64,
 }
 
 /// 中国地震台网中心预警数据
@@ -137,7 +137,7 @@ pub struct CencEew {
     #[serde(rename = "Depth")]
     pub depth: f64,
     #[serde(rename = "MaxIntensity")]
-    pub max_intensity: i32,
+    pub max_intensity: f64,
 }
 
 /// 福建地震局预警数据
