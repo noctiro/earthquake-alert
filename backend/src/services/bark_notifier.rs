@@ -21,7 +21,7 @@ pub struct AlertTiming {
     pub seconds_to_s: i64,
 }
 
-/// Bark 推送服务（支持高并发）
+/// Bark 推送客户端，负责重试和无效订阅清理
 #[derive(Clone)]
 pub struct BarkNotifier {
     api_url: String,
@@ -31,7 +31,6 @@ pub struct BarkNotifier {
 }
 
 impl BarkNotifier {
-    /// 创建新的 Bark 通知器，支持连接池和高并发
     pub fn new(
         api_url: String,
         pool_size: usize,
@@ -50,7 +49,12 @@ impl BarkNotifier {
             .http2_keep_alive_timeout(Duration::from_secs(10))
             .build()?;
 
-        tracing::info!("初始化 Bark 通知器，连接池大小: {}", pool_size);
+        tracing::info!(
+            event = "bark.initialized",
+            api_url = %api_url.trim_end_matches('/'),
+            pool_size,
+            "bark.initialized"
+        );
         Ok(Self {
             api_url: api_url.trim_end_matches('/').to_string(),
             client,
@@ -59,7 +63,6 @@ impl BarkNotifier {
         })
     }
 
-    /// 发送地震预警通知
     pub async fn send_earthquake_alert(
         &self,
         subscription: &Subscription,
@@ -85,7 +88,6 @@ impl BarkNotifier {
             earthquake.magnitude, timing.estimated_intensity, timing.distance_km
         );
 
-        // Body: 详细信息（详细内容）
         let region_text = if earthquake.region.is_empty() {
             format!(
                 "{:.2}°N, {:.2}°E",
@@ -107,7 +109,7 @@ impl BarkNotifier {
         };
         let mut lines = Vec::new();
         if earthquake.training {
-            lines.push("[测试] 这是一条模拟预警，不是真实地震。".to_string());
+            lines.push("[测试] 这是一条模拟预警，不是真实地震".to_string());
         }
         lines.extend([
             format!("地点: {}", region_text),
@@ -139,7 +141,6 @@ impl BarkNotifier {
             .await
     }
 
-    /// 发送订阅成功确认通知
     pub async fn send_subscription_confirm(&self, subscription: &Subscription) -> Result<()> {
         let title = "地震预警订阅成功";
         let subtitle = if subscription.locations.len() > 1 {
@@ -149,7 +150,7 @@ impl BarkNotifier {
         } else {
             format!("已保存 {}", subscription.location_name.trim())
         };
-        let mut lines = vec!["你将按当前通知级别规则接收地震预警。".to_string()];
+        let mut lines = vec!["你将按当前通知级别规则接收地震预警".to_string()];
         for location in subscription.normalized_locations() {
             let name = if location.name.trim().is_empty() {
                 "未命名地点"
@@ -167,7 +168,6 @@ impl BarkNotifier {
             .await
     }
 
-    /// 发送 Bark 通知（支持重试）
     async fn send_notification(
         &self,
         bark_id: &str,
@@ -212,7 +212,6 @@ impl BarkNotifier {
             query
         );
 
-        // 带重试的发送逻辑
         let mut retries = 0;
         let max_retries = 2;
 
@@ -222,32 +221,41 @@ impl BarkNotifier {
                     let status = response.status();
 
                     if status.is_success() {
-                        tracing::debug!("Bark 推送成功: {}", mask_bark_id(bark_id));
+                        tracing::debug!(
+                            event = "bark.push_succeeded",
+                            bark_id = %mask_bark_id(bark_id),
+                            status = status.as_u16(),
+                            "bark.push_succeeded"
+                        );
                         return Ok(());
                     } else {
                         let status_code = status.as_u16();
                         let error_text = response.text().await.unwrap_or_default();
 
-                        // 检查是否为需要删除订阅的错误码
+                        // Bark 对无效 key 可能返回 500；这些状态继续重试意义不大，直接清理订阅
                         if status_code == 400 || status_code == 404 || status_code == 500 {
                             tracing::warn!(
-                                "Bark 推送失败 (HTTP {}): {} - 删除该 bark_id: {}",
-                                status_code,
-                                error_text,
-                                mask_bark_id(bark_id)
+                                event = "bark.push_rejected",
+                                bark_id = %mask_bark_id(bark_id),
+                                status = status_code,
+                                response_body = %error_text,
+                                cleanup = true,
+                                "bark.push_rejected"
                             );
 
-                            // 删除该订阅
                             if let Err(e) = self.subscription_store.delete_subscription(bark_id) {
                                 tracing::error!(
-                                    "删除订阅失败 ({}): {:?}",
-                                    mask_bark_id(bark_id),
-                                    e
+                                    event = "subscription.cleanup_failed",
+                                    bark_id = %mask_bark_id(bark_id),
+                                    error = ?e,
+                                    "subscription.cleanup_failed"
                                 );
                             } else {
                                 tracing::info!(
-                                    "已自动删除无效的 bark_id: {}",
-                                    mask_bark_id(bark_id)
+                                    event = "subscription.cleaned_up",
+                                    bark_id = %mask_bark_id(bark_id),
+                                    reason = "bark_rejected",
+                                    "subscription.cleaned_up"
                                 );
                             }
 
@@ -257,33 +265,52 @@ impl BarkNotifier {
                             ));
                         }
 
-                        // 其他错误码，继续重试
                         if retries < max_retries {
                             retries += 1;
                             tracing::warn!(
-                                "Bark 推送失败 (重试 {}/{}): {} - {}",
-                                retries,
+                                event = "bark.push_retrying",
+                                bark_id = %mask_bark_id(bark_id),
+                                retry = retries,
                                 max_retries,
-                                status,
-                                error_text
+                                status = status.as_u16(),
+                                response_body = %error_text,
+                                "bark.push_retrying"
                             );
                             tokio::time::sleep(Duration::from_millis(100 * retries)).await;
                             continue;
                         }
 
-                        tracing::error!("Bark 推送失败: {} - {}", status, error_text);
+                        tracing::error!(
+                            event = "bark.push_failed",
+                            bark_id = %mask_bark_id(bark_id),
+                            status = status.as_u16(),
+                            response_body = %error_text,
+                            "bark.push_failed"
+                        );
                         return Err(anyhow::anyhow!("Bark 推送失败: {}", status));
                     }
                 }
                 Err(e) => {
                     if retries < max_retries {
                         retries += 1;
-                        tracing::warn!("Bark 请求失败 (重试 {}/{}): {:?}", retries, max_retries, e);
+                        tracing::warn!(
+                            event = "bark.request_retrying",
+                            bark_id = %mask_bark_id(bark_id),
+                            retry = retries,
+                            max_retries,
+                            error = ?e,
+                            "bark.request_retrying"
+                        );
                         tokio::time::sleep(Duration::from_millis(100 * retries)).await;
                         continue;
                     }
 
-                    tracing::error!("Bark 请求失败: {:?}", e);
+                    tracing::error!(
+                        event = "bark.request_failed",
+                        bark_id = %mask_bark_id(bark_id),
+                        error = ?e,
+                        "bark.request_failed"
+                    );
                     return Err(e.into());
                 }
             }

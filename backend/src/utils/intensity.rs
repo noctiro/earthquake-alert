@@ -1,29 +1,10 @@
-//! 烈度计算工具
-//!
-//! 基于震级和距离估算日本震度（JMA Seismic Intensity Scale）
-//!
-//! 震度等级：
-//! 0: 无感
-//! 1: 微震
-//! 2: 轻震
-//! 3: 弱震 (开始有感)
-//! 4: 中震
-//! 5弱/5强: 强震
-//! 6弱/6强: 烈震
-//! 7: 剧震
+//! 基于震级和震源距估算 JMA 震度
 
-/// 估算震度（基于震级和距离）
+/// 返回 0-7 的整数震度
 ///
-/// 优化后的公式，基于日本气象厅的经验公式和实际观测数据
-/// 使用改进的衰减模型：I = a * M - b * log10(D + c) + d
-///
-/// 其中：
-/// - I: 震度（JMA Scale 0-7）
-/// - M: 震级（Magnitude）
-/// - D: 距离 (km)
-/// - a, b, c, d: 经验系数（根据震级调整）
+/// 衰减模型为 `I = a * M - b * log10(D + c) + d`，震级分段处会混合两组系数，
+/// 避免估算值在边界附近跳变过大
 pub fn estimate_intensity(magnitude: f64, distance_km: f64) -> u8 {
-    // 边界检查
     if magnitude <= 0.0 || distance_km < 0.0 {
         return 0;
     }
@@ -36,10 +17,8 @@ pub fn estimate_intensity(magnitude: f64, distance_km: f64) -> u8 {
 
     let (a, b, c, d) = intensity_coefficients(magnitude);
 
-    // 计算震度
     let intensity = a * magnitude - b * (distance_km + c).log10() + d;
 
-    // 限制在 0-7 范围内并四舍五入
     intensity.clamp(0.0, 7.0).round() as u8
 }
 
@@ -89,19 +68,15 @@ mod tests {
 
     #[test]
     fn test_estimate_intensity() {
-        // M7.0 震级，10km 距离，应该是高烈度
         let i1 = estimate_intensity(7.0, 10.0);
         assert!(i1 >= 5);
 
-        // M7.0 震级，100km 距离，烈度应该降低
         let i2 = estimate_intensity(7.0, 100.0);
         assert!(i2 < i1);
 
-        // M5.0 震级，50km 距离
         let i3 = estimate_intensity(5.0, 50.0);
         assert!((1..=5).contains(&i3));
 
-        // M4.0 震级，10km 距离
         let i4 = estimate_intensity(4.0, 10.0);
         assert!(i4 <= i3);
     }

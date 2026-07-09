@@ -96,7 +96,6 @@ impl Config {
                 .unwrap_or_else(|_| "1000".to_string())
                 .parse()
                 .unwrap_or(1000.0),
-            // 并发配置：百万级别并发支持
             max_concurrent_notifications: env::var("MAX_CONCURRENT_NOTIFICATIONS")
                 .unwrap_or_else(|_| "1000".to_string())
                 .parse()

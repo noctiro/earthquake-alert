@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// 订阅信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
     pub bark_id: String,
@@ -86,7 +85,6 @@ impl Subscription {
     }
 }
 
-/// 订阅请求
 #[derive(Debug, Deserialize)]
 pub struct SubscribeRequest {
     pub bark_id: String,
@@ -124,7 +122,6 @@ pub fn mask_bark_id(value: &str) -> String {
     }
 }
 
-/// API 响应
 #[derive(Debug, Serialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
@@ -151,7 +148,7 @@ impl<T> ApiResponse<T> {
     }
 }
 
-/// JMA（日本气象厅）地震预警数据
+/// JMA（日本气象厅）地震预警数据，时间字段为 UTC+9
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JmaEew {
     #[serde(rename = "type")]
@@ -160,9 +157,9 @@ pub struct JmaEew {
     pub event_id: String,
     #[serde(rename = "ReportNum", alias = "Serial", default)]
     pub report_num: u32,
-    #[serde(rename = "AnnouncedTime")] // UTC+9
+    #[serde(rename = "AnnouncedTime")]
     pub announced_time: String,
-    #[serde(rename = "OriginTime")] // UTC+9
+    #[serde(rename = "OriginTime")]
     pub origin_time: String,
     #[serde(rename = "Hypocenter")]
     pub hypocenter: String,
@@ -170,7 +167,8 @@ pub struct JmaEew {
     pub latitude: f64,
     #[serde(rename = "Longitude")]
     pub longitude: f64,
-    #[serde(rename = "Magunitude")] // 注意：API 拼写错误
+    // 上游字段拼写为 Magunitude，反序列化时必须保留这个拼写
+    #[serde(rename = "Magunitude")]
     pub magnitude: f64,
     #[serde(rename = "Depth")]
     pub depth: f64,
@@ -184,7 +182,7 @@ pub struct JmaEew {
     pub training: bool,
 }
 
-/// 四川地震局预警数据
+/// 四川地震局预警数据，时间字段为 UTC+8
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SichuanEew {
     #[serde(rename = "type")]
@@ -193,7 +191,7 @@ pub struct SichuanEew {
     pub event_id: String,
     #[serde(rename = "ReportNum", alias = "Serial", default)]
     pub report_num: u32,
-    #[serde(rename = "OriginTime")] // UTC+8
+    #[serde(rename = "OriginTime")]
     pub origin_time: String,
     #[serde(rename = "HypoCenter")]
     pub hypocenter: String,
@@ -201,7 +199,8 @@ pub struct SichuanEew {
     pub latitude: f64,
     #[serde(rename = "Longitude")]
     pub longitude: f64,
-    #[serde(rename = "Magunitude")] // 注意：API 拼写错误
+    // 上游字段拼写为 Magunitude，反序列化时必须保留这个拼写
+    #[serde(rename = "Magunitude")]
     pub magnitude: f64,
     #[serde(rename = "Depth")]
     pub depth: f64,
@@ -215,7 +214,7 @@ pub struct SichuanEew {
     pub training: bool,
 }
 
-/// 中国地震台网中心预警数据
+/// 中国地震台网中心预警数据，时间字段为 UTC+8
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CencEew {
     #[serde(rename = "type")]
@@ -224,7 +223,7 @@ pub struct CencEew {
     pub event_id: String,
     #[serde(rename = "ReportNum", alias = "Serial", default)]
     pub report_num: u32,
-    #[serde(rename = "OriginTime")] // UTC+8
+    #[serde(rename = "OriginTime")]
     pub origin_time: String,
     #[serde(rename = "HypoCenter")]
     pub hypocenter: String,
@@ -246,7 +245,7 @@ pub struct CencEew {
     pub training: bool,
 }
 
-/// 福建地震局预警数据
+/// 福建地震局预警数据，时间字段为 UTC+8
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FujianEew {
     #[serde(rename = "type")]
@@ -255,7 +254,7 @@ pub struct FujianEew {
     pub event_id: String,
     #[serde(rename = "ReportNum", alias = "Serial", default)]
     pub report_num: u32,
-    #[serde(rename = "OriginTime")] // UTC+8
+    #[serde(rename = "OriginTime")]
     pub origin_time: String,
     #[serde(rename = "HypoCenter")]
     pub hypocenter: String,
@@ -263,7 +262,8 @@ pub struct FujianEew {
     pub latitude: f64,
     #[serde(rename = "Longitude")]
     pub longitude: f64,
-    #[serde(rename = "Magunitude")] // 注意：API 拼写错误
+    // 上游字段拼写为 Magunitude，反序列化时必须保留这个拼写
+    #[serde(rename = "Magunitude")]
     pub magnitude: f64,
     #[serde(rename = "isFinal")]
     pub is_final: bool,
@@ -273,7 +273,6 @@ pub struct FujianEew {
     pub training: bool,
 }
 
-/// 未知数据源的通用结构（fallback）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnknownEarthquakeData {
     #[serde(rename = "type")]
@@ -282,7 +281,6 @@ pub struct UnknownEarthquakeData {
     pub data: serde_json::Value,
 }
 
-/// 地震数据枚举（支持所有数据源）
 #[derive(Debug, Clone)]
 pub enum EarthquakeData {
     JmaEew(JmaEew),
@@ -293,9 +291,7 @@ pub enum EarthquakeData {
 }
 
 impl EarthquakeData {
-    /// 从 JSON 字符串解析
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        // 先解析消息类型
         let msg: WebSocketMessage = serde_json::from_str(json)?;
 
         match msg.message_type.as_str() {
@@ -316,12 +312,17 @@ impl EarthquakeData {
                 Ok(EarthquakeData::FujianEew(data))
             }
             _ => {
-                // 未知数据源
                 tracing::warn!(
-                    "发现未适配的数据源类型: {}，请考虑添加专门的 struct 支持",
-                    msg.message_type
+                    event = "eew.unknown_source",
+                    message_type = %msg.message_type,
+                    "eew.unknown_source"
                 );
-                tracing::debug!("未适配数据内容: {}", json);
+                tracing::debug!(
+                    event = "eew.unknown_source_payload",
+                    message_type = %msg.message_type,
+                    payload = %json,
+                    "eew.unknown_source_payload"
+                );
 
                 let data: UnknownEarthquakeData = serde_json::from_str(json)?;
                 Ok(EarthquakeData::Unknown(data))
@@ -329,7 +330,6 @@ impl EarthquakeData {
         }
     }
 
-    /// 转换为通用信息
     pub fn to_common_info(&self) -> Option<CommonEarthquakeInfo> {
         match self {
             EarthquakeData::JmaEew(data) => Some(CommonEarthquakeInfo {
@@ -386,21 +386,20 @@ impl EarthquakeData {
                 latitude: data.latitude,
                 longitude: data.longitude,
                 magnitude: data.magnitude,
-                depth: 0.0, // 福建数据源没有深度
+                depth: 0.0,
                 max_intensity: "未知".to_string(),
                 region: data.hypocenter.clone(),
                 origin_time: data.origin_time.clone(),
                 source_type: "fj_eew".to_string(),
             }),
             EarthquakeData::Unknown(data) => {
-                // 尝试从未知数据源提取通用信息
-                // 如果关键字段存在且类型正确，仍然可以推送
+                // fallback 只接受推送所需的最小字段集合，避免误推结构不明确的数据
                 let latitude = data.data.get("Latitude").and_then(|v| v.as_f64())?;
                 let longitude = data.data.get("Longitude").and_then(|v| v.as_f64())?;
                 let magnitude = data
                     .data
                     .get("Magnitude")
-                    .or_else(|| data.data.get("Magunitude")) // 兼容拼写错误
+                    .or_else(|| data.data.get("Magunitude"))
                     .and_then(|v| v.as_f64())?;
 
                 let depth = data
@@ -413,7 +412,6 @@ impl EarthquakeData {
                     .data
                     .get("MaxIntensity")
                     .and_then(|v| {
-                        // 尝试字符串或数字类型
                         v.as_str()
                             .map(|s| s.to_string())
                             .or_else(|| v.as_i64().map(|i| i.to_string()))
@@ -446,11 +444,12 @@ impl EarthquakeData {
                 let training = json_bool(&data.data, &["is_training", "Training"]);
 
                 tracing::info!(
-                    "未知数据源 [{}] 成功提取通用信息: M{:.1} @ ({:.2}, {:.2})",
-                    data.alert_type,
+                    event = "eew.unknown_source_normalized",
+                    message_type = %data.alert_type,
                     magnitude,
                     latitude,
-                    longitude
+                    longitude,
+                    "eew.unknown_source_normalized"
                 );
 
                 Some(CommonEarthquakeInfo {
@@ -472,7 +471,6 @@ impl EarthquakeData {
         }
     }
 
-    /// 从 JSON 字符串解析并转换为通用信息（便捷方法）
     pub fn parse_to_common_info(json: &str) -> Result<CommonEarthquakeInfo, serde_json::Error> {
         let earthquake_data = Self::from_json(json)?;
         earthquake_data.to_common_info().ok_or_else(|| {
@@ -512,7 +510,6 @@ fn json_bool(data: &serde_json::Value, keys: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-/// 通用地震信息（用于推送）
 #[derive(Debug, Clone)]
 pub struct CommonEarthquakeInfo {
     pub event_id: String,
@@ -524,20 +521,18 @@ pub struct CommonEarthquakeInfo {
     pub max_intensity: String,
     pub region: String,
     pub origin_time: String,
-    pub source_type: String, // 数据源类型
+    pub source_type: String,
     pub final_report: bool,
     pub cancel: bool,
     pub training: bool,
 }
 
-/// WebSocket 消息包装（用于区分不同类型的消息）
 #[derive(Debug, Deserialize)]
 pub struct WebSocketMessage {
     #[serde(rename = "type")]
     pub message_type: String,
 }
 
-/// GeoHash 索引数据 (存储在数据库中)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeoHashIndex {
     pub bark_ids: Vec<String>,

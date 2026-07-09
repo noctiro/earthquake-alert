@@ -36,7 +36,7 @@ struct SeenEvent {
     at: Instant,
 }
 
-/// 地震监控服务（支持百万级并发）
+/// 监听 EEW WebSocket，并把匹配订阅的事件转成 Bark 推送
 pub struct EarthquakeMonitor {
     db: Database,
     bark_notifier: BarkNotifier,
@@ -78,10 +78,11 @@ impl EarthquakeMonitor {
         };
 
         tracing::info!(
-            "初始化地震监控服务: 最大并发={}, HTTP连接池={}, websocket={}",
+            event = "monitor.initialized",
             max_concurrent,
-            config.http_pool_size,
-            monitor_config.websocket_url
+            http_pool_size = config.http_pool_size,
+            websocket_url = %monitor_config.websocket_url,
+            "monitor.initialized"
         );
 
         Ok(Self {
@@ -94,53 +95,63 @@ impl EarthquakeMonitor {
         })
     }
 
-    /// 启动监控（会自动重连）
+    /// 启动 WebSocket 循环；连接断开后按指数退避重连
     pub async fn start(&self) -> Result<()> {
         let mut reconnect_delay = self.config.reconnect_min;
         loop {
-            tracing::info!("正在连接到地震预警 WebSocket...");
+            tracing::info!(
+                event = "websocket.connecting",
+                websocket_url = %self.config.websocket_url,
+                "websocket.connecting"
+            );
 
             match self.connect_and_monitor().await {
                 Ok(_) => {
-                    tracing::warn!("WebSocket 连接正常关闭");
+                    tracing::warn!(event = "websocket.closed", "websocket.closed");
                     reconnect_delay = self.config.reconnect_min;
                 }
                 Err(e) => {
-                    tracing::error!("WebSocket 连接错误: {:?}", e);
+                    tracing::error!(event = "websocket.error", error = ?e, "websocket.error");
                 }
             }
 
-            tracing::info!("{}秒后重新连接...", reconnect_delay.as_secs());
+            tracing::info!(
+                event = "websocket.reconnect_scheduled",
+                delay_seconds = reconnect_delay.as_secs(),
+                "websocket.reconnect_scheduled"
+            );
             tokio::time::sleep(reconnect_delay).await;
             reconnect_delay = (reconnect_delay * 2).min(self.config.reconnect_max);
         }
     }
 
-    /// 连接并监控 WebSocket
     async fn connect_and_monitor(&self) -> Result<()> {
         let (ws_stream, _) = connect_async(&self.config.websocket_url).await?;
-        tracing::info!("WebSocket 已连接到: {}", self.config.websocket_url);
+        tracing::info!(
+            event = "websocket.connected",
+            websocket_url = %self.config.websocket_url,
+            "websocket.connected"
+        );
 
         let (mut _write, mut read) = ws_stream.split();
 
-        // 监听消息
         while let Some(message) = read.next().await {
             match message {
                 Ok(Message::Text(text)) => {
                     if let Err(e) = self.handle_earthquake_message(&text).await {
-                        tracing::error!("处理地震消息失败: {:?}", e);
+                        tracing::error!(event = "eew.handle_failed", error = ?e, "eew.handle_failed");
                     }
                 }
                 Ok(Message::Close(_)) => {
-                    tracing::info!("WebSocket 连接关闭");
+                    tracing::info!(event = "websocket.close_frame", "websocket.close_frame");
                     break;
                 }
                 Ok(Message::Ping(_)) => {
-                    tracing::debug!("收到 Ping");
                     // tokio-tungstenite 会自动处理 pong
+                    tracing::debug!(event = "websocket.ping", "websocket.ping");
                 }
                 Err(e) => {
-                    tracing::error!("WebSocket 消息错误: {:?}", e);
+                    tracing::error!(event = "websocket.message_error", error = ?e, "websocket.message_error");
                     return Err(e.into());
                 }
                 _ => {}
@@ -150,96 +161,114 @@ impl EarthquakeMonitor {
         Ok(())
     }
 
-    /// 处理地震消息
     async fn handle_earthquake_message(&self, message: &str) -> Result<()> {
-        // 先解析消息类型
         let msg_wrapper: WebSocketMessage = match serde_json::from_str(message) {
             Ok(data) => data,
             Err(e) => {
-                tracing::warn!("无法解析消息类型: {:?}, 消息: {}", e, message);
+                tracing::warn!(
+                    event = "eew.message_type_parse_failed",
+                    error = ?e,
+                    message_len = message.len(),
+                    "eew.message_type_parse_failed"
+                );
                 return Ok(());
             }
         };
 
-        // 过滤掉非地震数据消息
         match msg_wrapper.message_type.as_str() {
             "heartbeat" => {
-                tracing::debug!("收到心跳消息");
+                tracing::debug!(event = "websocket.heartbeat", "websocket.heartbeat");
                 return Ok(());
             }
             "pong" => {
-                tracing::debug!("收到 pong 消息");
+                tracing::debug!(event = "websocket.pong", "websocket.pong");
                 return Ok(());
             }
             "jma_eqlist" | "cenc_eqlist" => {
-                // 地震列表消息，暂不处理
-                tracing::debug!("收到地震列表消息: {}", msg_wrapper.message_type);
+                tracing::debug!(
+                    event = "eew.list_ignored",
+                    message_type = %msg_wrapper.message_type,
+                    "eew.list_ignored"
+                );
                 return Ok(());
             }
-            _ => {
-                // 继续处理，可能是地震预警数据
-            }
+            _ => {}
         }
 
-        // 解析地震数据并转换为通用信息
         let common_info = match EarthquakeData::parse_to_common_info(message) {
             Ok(info) => info,
             Err(e) => {
                 tracing::error!(
-                    "解析地震数据失败 (type={}): {:?}",
-                    msg_wrapper.message_type,
-                    e
+                    event = "eew.parse_failed",
+                    message_type = %msg_wrapper.message_type,
+                    error = ?e,
+                    "eew.parse_failed"
                 );
                 return Ok(());
             }
         };
 
         tracing::info!(
-            "接收到地震预警 [{}]: id={} report={} M{:.1} 深度{}km @ ({}, {}) - {}",
-            common_info.source_type,
-            common_info.event_id,
-            common_info.report_num,
-            common_info.magnitude,
-            common_info.depth,
-            common_info.latitude,
-            common_info.longitude,
-            common_info.region
+            event = "eew.received",
+            source_type = %common_info.source_type,
+            event_id = %common_info.event_id,
+            report_num = common_info.report_num,
+            final_report = common_info.final_report,
+            cancel = common_info.cancel,
+            training = common_info.training,
+            magnitude = common_info.magnitude,
+            depth_km = common_info.depth,
+            latitude = common_info.latitude,
+            longitude = common_info.longitude,
+            region = %common_info.region,
+            "eew.received"
         );
 
         if self.should_skip_event(&common_info) {
             return Ok(());
         }
 
-        // 查找并推送给相关订阅者
         self.notify_subscribers(&common_info).await?;
 
         Ok(())
     }
 
-    /// 通知订阅者（并发优化版本，支持百万级并发）
     async fn notify_subscribers(&self, earthquake: &CommonEarthquakeInfo) -> Result<()> {
         let start_time = Instant::now();
 
-        // 1. 计算震央的 GeoHash 及邻居
         let center_geohash = geohash::encode(earthquake.latitude, earthquake.longitude);
         let neighbor_geohashes = geohash::get_neighbors(&center_geohash);
 
-        tracing::info!("检查 {} 个 GeoHash 格子", neighbor_geohashes.len());
+        let event_key = earthquake_key(earthquake);
+        tracing::info!(
+            event = "notify.lookup_started",
+            event_key = %event_key,
+            center_geohash = %center_geohash,
+            geohash_count = neighbor_geohashes.len(),
+            "notify.lookup_started"
+        );
 
-        // 2. 获取相关格子内的所有订阅
         let store = self.db.subscriptions();
         let subscriptions = store.get_subscriptions_by_geohashes(&neighbor_geohashes)?;
 
         let total_candidates = subscriptions.len();
-        tracing::info!("找到 {} 个候选订阅", total_candidates);
+        tracing::info!(
+            event = "notify.candidates_loaded",
+            event_key = %event_key,
+            candidate_count = total_candidates,
+            "notify.candidates_loaded"
+        );
 
-        // 早期退出：如果没有订阅者，直接返回
         if total_candidates == 0 {
-            tracing::info!("没有订阅者，跳过推送");
+            tracing::info!(
+                event = "notify.skipped",
+                event_key = %event_key,
+                reason = "no_candidates",
+                "notify.skipped"
+            );
             return Ok(());
         }
 
-        // 3. 预计算所有订阅者的距离和震度（批处理优化）
         let mut notification_tasks = Vec::with_capacity(total_candidates);
 
         for subscription in subscriptions {
@@ -252,17 +281,23 @@ impl EarthquakeMonitor {
 
         let tasks_count = notification_tasks.len();
         tracing::info!(
-            "需要推送 {} 个通知 (过滤掉 {} 个)",
-            tasks_count,
-            total_candidates - tasks_count
+            event = "notify.filtered",
+            event_key = %event_key,
+            notification_count = tasks_count,
+            filtered_count = total_candidates - tasks_count,
+            "notify.filtered"
         );
 
         if tasks_count == 0 {
-            tracing::info!("所有订阅者震度未达阈值，跳过推送");
+            tracing::info!(
+                event = "notify.skipped",
+                event_key = %event_key,
+                reason = "below_threshold",
+                "notify.skipped"
+            );
             return Ok(());
         }
 
-        // 4. 并发发送通知（使用 Semaphore 限制并发数）
         let bark_notifier = self.bark_notifier.clone();
         let semaphore = self.semaphore.clone();
         let earthquake = earthquake.clone();
@@ -275,23 +310,27 @@ impl EarthquakeMonitor {
 
                 async move {
                     let bark_id = subscription.bark_id.clone();
-                    // 获取信号量许可（限流）
                     let permit = semaphore.acquire_owned().await;
                     let permit_guard: OwnedSemaphorePermit = match permit {
                         Ok(permit) => permit,
                         Err(error) => {
-                            tracing::error!("推送并发控制已关闭: {:?}", error);
+                            tracing::error!(
+                                event = "notify.permit_failed",
+                                error = ?error,
+                                "notify.permit_failed"
+                            );
                             return (bark_id, false, None);
                         }
                     };
                     let _permit_guard = permit_guard;
 
                     tracing::debug!(
-                        "推送给 {}: 距离 {:.1}km, 预估震度 {}, 通知级别 {}",
-                        mask_bark_id(&bark_id),
-                        timing.distance_km,
-                        timing.estimated_intensity,
-                        level
+                        event = "notify.send_started",
+                        bark_id = %mask_bark_id(&bark_id),
+                        distance_km = timing.distance_km,
+                        estimated_intensity = timing.estimated_intensity,
+                        level = %level,
+                        "notify.send_started"
                     );
 
                     match bark_notifier
@@ -300,33 +339,39 @@ impl EarthquakeMonitor {
                     {
                         Ok(_) => (bark_id, true, None),
                         Err(e) => {
-                            tracing::error!("推送失败 ({}): {:?}", mask_bark_id(&bark_id), e);
+                            tracing::error!(
+                                event = "notify.send_failed",
+                                bark_id = %mask_bark_id(&bark_id),
+                                error = ?e,
+                                "notify.send_failed"
+                            );
                             (bark_id, false, Some(e))
                         }
                     }
                 }
             })
-            .buffer_unordered(self.max_concurrent) // 并发执行
+            .buffer_unordered(self.max_concurrent)
             .collect::<Vec<_>>()
             .await;
 
-        // 5. 统计结果
         let notified_count = results.iter().filter(|(_, success, _)| *success).count();
         let error_count = results.iter().filter(|(_, success, _)| !*success).count();
 
         let elapsed = start_time.elapsed();
 
         tracing::info!(
-            "推送完成: 候选 {} 个, 已推送 {} 个, 失败 {} 个, 耗时 {:.2}s, 平均 {:.0} 个/秒",
-            total_candidates,
+            event = "notify.completed",
+            event_key = %event_key,
+            candidate_count = total_candidates,
             notified_count,
             error_count,
-            elapsed.as_secs_f64(),
-            if elapsed.as_secs_f64() > 0.0 {
+            elapsed_seconds = elapsed.as_secs_f64(),
+            throughput_per_second = if elapsed.as_secs_f64() > 0.0 {
                 notified_count as f64 / elapsed.as_secs_f64()
             } else {
                 0.0
-            }
+            },
+            "notify.completed"
         );
 
         Ok(())
@@ -334,11 +379,21 @@ impl EarthquakeMonitor {
 
     fn should_skip_event(&self, earthquake: &CommonEarthquakeInfo) -> bool {
         if earthquake.training && self.config.ignore_training {
-            tracing::info!("跳过演练事件: {}", earthquake_key(earthquake));
+            tracing::info!(
+                event = "eew.skipped",
+                reason = "training",
+                event_key = %earthquake_key(earthquake),
+                "eew.skipped"
+            );
             return true;
         }
         if earthquake.cancel && self.config.ignore_cancel {
-            tracing::info!("跳过取消事件: {}", earthquake_key(earthquake));
+            tracing::info!(
+                event = "eew.skipped",
+                reason = "cancel",
+                event_key = %earthquake_key(earthquake),
+                "eew.skipped"
+            );
             return true;
         }
         if self.config.stale_origin_seconds > 0
@@ -346,9 +401,12 @@ impl EarthquakeMonitor {
             && age_seconds > self.config.stale_origin_seconds
         {
             tracing::info!(
-                "跳过过期事件: {} age={}s",
-                earthquake_key(earthquake),
-                age_seconds
+                event = "eew.skipped",
+                reason = "stale_origin",
+                event_key = %earthquake_key(earthquake),
+                age_seconds,
+                stale_origin_seconds = self.config.stale_origin_seconds,
+                "eew.skipped"
             );
             return true;
         }
@@ -356,7 +414,7 @@ impl EarthquakeMonitor {
         let mut seen = match self.seen_events.lock() {
             Ok(seen) => seen,
             Err(error) => {
-                tracing::error!("事件去重锁已损坏: {:?}", error);
+                tracing::error!(event = "dedup.lock_poisoned", error = ?error, "dedup.lock_poisoned");
                 return true;
             }
         };
@@ -368,10 +426,12 @@ impl EarthquakeMonitor {
             let gap = earthquake.report_num.saturating_sub(previous.report_num);
             if !self.config.push_updates || !is_update || gap < self.config.update_min_report_gap {
                 tracing::debug!(
-                    "跳过重复事件: {} previous_report={} report={}",
-                    key,
-                    previous.report_num,
-                    earthquake.report_num
+                    event = "eew.skipped",
+                    reason = "duplicate",
+                    event_key = %key,
+                    previous_report_num = previous.report_num,
+                    report_num = earthquake.report_num,
+                    "eew.skipped"
                 );
                 return true;
             }

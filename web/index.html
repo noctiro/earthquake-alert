@@ -322,7 +322,7 @@
         <h1>Wolfx 预警订阅</h1>
         <div class="badge"><span class="dot"></span><span id="stats">状态未知</span></div>
       </div>
-      <p class="subhead">地震预警通过 Bark 推送到当前设备。</p>
+      <p class="subhead">地震预警通过 Bark 推送到当前设备</p>
     </header>
 
     <section class="panel">
@@ -355,7 +355,7 @@
           <div class="threshold-row">
             <div>
               <div class="setting-title">通知级别规则</div>
-              <div class="setting-note">每次保存都会覆盖服务器上的订阅配置。</div>
+              <div class="setting-note">每次保存都会覆盖服务器上的订阅配置</div>
             </div>
             <div class="notify-actions">
               <button type="button" id="add-rule">添加规则</button>
@@ -450,7 +450,7 @@
     function renderLocations() {
       selectedLocations = normalizeLocations(selectedLocations);
       if (!selectedLocations.length) {
-        locationsList.innerHTML = '<div class="locations-empty">尚未添加监测地点。点击地图、定位，或输入经纬度后添加。</div>';
+        locationsList.innerHTML = '<div class="locations-empty">尚未添加监测地点，点击地图、定位，或输入经纬度后添加</div>';
         return;
       }
       locationsList.innerHTML = selectedLocations.map((item, index) => `
@@ -467,12 +467,12 @@
     function addCurrentLocation() {
       const lat = Number(latInput.value);
       const lon = Number(lonInput.value);
-      if (!validCoordinate(lat, lon)) return show("请输入有效经纬度。", "error");
-      if (selectedLocations.length >= 3) return show("最多添加 3 个监测地点。", "error");
+      if (!validCoordinate(lat, lon)) return show("请输入有效经纬度", "error");
+      if (selectedLocations.length >= 3) return show("最多添加 3 个监测地点", "error");
       selectedLocations = normalizeLocations([...selectedLocations, { name: nameInput.value, latitude: lat, longitude: lon }]);
       renderLocations();
       persistDraft();
-      show("已添加监测地点。", "success");
+      show("已添加监测地点", "success");
     }
 
     function defaultNotifyBands() {
@@ -511,17 +511,17 @@
     }
 
     function validateBands(bands) {
-      if (!bands.length) return "请至少保留一条通知级别规则。";
+      if (!bands.length) return "请至少保留一条通知级别规则";
       const levels = new Set();
       const used = new Set();
       for (const band of bands) {
-        if (!notifyLevelOrder.includes(band.level)) return "通知级别无效。";
-        if (levels.has(band.level)) return "每个通知级别只能添加一条规则。";
+        if (!notifyLevelOrder.includes(band.level)) return "通知级别无效";
+        if (levels.has(band.level)) return "每个通知级别只能添加一条规则";
         levels.add(band.level);
-        if (band.min > band.max || band.min < 0 || band.max > 99) return "烈度范围无效。";
-        if (band.level === "critical" && band.max < 7) return "Critical 规则上限必须覆盖 7+。";
+        if (band.min > band.max || band.min < 0 || band.max > 99) return "烈度范围无效";
+        if (band.level === "critical" && band.max < 7) return "Critical 规则上限必须覆盖 7+";
         for (let value = band.min; value <= band.max; value++) {
-          if (used.has(value)) return "烈度范围不能重叠。";
+          if (used.has(value)) return "烈度范围不能重叠";
           used.add(value);
         }
       }
@@ -604,7 +604,7 @@
     });
 
     locate.addEventListener("click", () => {
-      if (!navigator.geolocation) return show("当前浏览器不支持定位。", "error");
+      if (!navigator.geolocation) return show("当前浏览器不支持定位", "error");
       locate.disabled = true;
       show("正在获取定位...", "info");
       navigator.geolocation.getCurrentPosition(
@@ -612,11 +612,11 @@
           setPosition(pos.coords.latitude, pos.coords.longitude, 12);
           if (!nameInput.value.trim()) nameInput.value = "当前位置";
           persistDraft();
-          show("定位成功。", "success");
+          show("定位成功", "success");
           locate.disabled = false;
         },
         () => {
-          show("定位失败，请点击地图或输入经纬度。", "error");
+          show("定位失败，请点击地图或输入经纬度", "error");
           locate.disabled = false;
         },
         { enableHighAccuracy: true, timeout: 9000 }
@@ -633,7 +633,7 @@
         selectedLocations.splice(index, 1);
         renderLocations();
         persistDraft();
-        return show("已删除监测地点。", "success");
+        return show("已删除监测地点", "success");
       }
       const item = selectedLocations[index];
       if (!item) return;
@@ -648,7 +648,7 @@
       if (!commitBands()) return;
       const used = new Set(notifyBands.map((band) => band.level));
       const level = notifyLevelOrder.find((item) => !used.has(item));
-      if (!level) return setNotifyWarning("通知级别规则最多 3 条。");
+      if (!level) return setNotifyWarning("通知级别规则最多 3 条");
       notifyBands.push({ min: level === "passive" ? 0 : level === "active" ? 2 : 3, max: level === "critical" ? 99 : level === "active" ? 2 : 1, level, label: levelLabel(level) });
       renderNotifyBands();
       persistDraft();
@@ -677,16 +677,16 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!commitBands()) return show("请修正通知级别规则。", "error");
+      if (!commitBands()) return show("请修正通知级别规则", "error");
       let locations = normalizeLocations(selectedLocations);
       if (!locations.length) {
         const lat = Number(latInput.value);
         const lon = Number(lonInput.value);
         if (validCoordinate(lat, lon)) locations = normalizeLocations([{ name: nameInput.value, latitude: lat, longitude: lon }]);
       }
-      if (!locations.length) return show("请至少添加一个监测地点。", "error");
+      if (!locations.length) return show("请至少添加一个监测地点", "error");
       const barkID = barkInput.value.trim();
-      if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("Bark Key 只能包含字母和数字。", "error");
+      if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("Bark Key 只能包含字母和数字", "error");
       const payload = {
         bark_id: barkID,
         location_name: locations[0].name,
@@ -708,10 +708,10 @@
         selectedLocations = locations;
         persistDraft();
         renderLocations();
-        show("订阅已覆盖保存。", "success");
+        show("订阅已覆盖保存", "success");
         refreshStats();
       } catch (error) {
-        show(error.message || "网络请求失败。", "error");
+        show(error.message || "网络请求失败", "error");
       } finally {
         submit.disabled = false;
       }
@@ -719,7 +719,7 @@
 
     unsubscribe.addEventListener("click", async () => {
       const barkID = barkInput.value.trim();
-      if (!barkID) return show("请先填写 Bark Key。", "error");
+      if (!barkID) return show("请先填写 Bark Key", "error");
       if (!confirm("确定取消订阅？")) return;
       unsubscribe.disabled = true;
       show("正在取消订阅...", "info");
@@ -736,10 +736,10 @@
         renderLocations();
         form.reset();
         if (marker) { map.removeLayer(marker); marker = null; }
-        show("已取消订阅。", "success");
+        show("已取消订阅", "success");
         refreshStats();
       } catch (error) {
-        show(error.message || "网络请求失败。", "error");
+        show(error.message || "网络请求失败", "error");
       } finally {
         unsubscribe.disabled = false;
       }

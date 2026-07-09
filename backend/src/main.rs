@@ -22,7 +22,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 初始化日志
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -31,13 +30,20 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // 加载配置
     let config = Config::from_env();
-    tracing::info!("配置加载完成: {:?}", config);
+    tracing::info!(
+        event = "config.loaded",
+        server_host = %config.server_host,
+        server_port = config.server_port,
+        db_path = %config.db_path,
+        websocket_url = %config.eew_websocket_url,
+        max_concurrent_notifications = config.max_concurrent_notifications,
+        http_pool_size = config.http_pool_size,
+        "config.loaded"
+    );
 
-    // 打开数据库
     let db = Database::open(&config.db_path)?;
-    tracing::info!("数据库已打开: {}", config.db_path);
+    tracing::info!(event = "database.opened", db_path = %config.db_path, "database.opened");
 
     let push_config = BarkPushConfig {
         sound: config.bark_sound.clone(),
@@ -52,13 +58,11 @@ async fn main() -> Result<()> {
         push_config,
     )?;
 
-    // 创建应用状态
     let state = AppState {
         db: db.clone(),
         bark_notifier: bark_notifier.clone(),
     };
 
-    // 创建路由
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/index.html", get(index_handler))
@@ -74,20 +78,17 @@ async fn main() -> Result<()> {
         )
         .with_state(state);
 
-    // 启动服务器
     let addr: SocketAddr = format!("{}:{}", config.server_host, config.server_port).parse()?;
 
-    tracing::info!("服务器启动中: http://{}", addr);
+    tracing::info!(event = "server.starting", listen_addr = %addr, "server.starting");
 
-    // 在后台任务中启动地震监控（支持百万级并发）
     let monitor = EarthquakeMonitor::new(db, config.clone(), bark_notifier)?;
     tokio::spawn(async move {
         if let Err(e) = monitor.start().await {
-            tracing::error!("地震监控服务错误: {:?}", e);
+            tracing::error!(event = "monitor.task_failed", error = ?e, "monitor.task_failed");
         }
     });
 
-    // 启动 HTTP 服务器
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
 

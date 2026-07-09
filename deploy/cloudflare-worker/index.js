@@ -1,7 +1,7 @@
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    // 匹配 API 或健康检查
+    // Worker 只托管静态前端；API 和健康检查转发到 Rust 后端
     if (url.pathname.startsWith("/api/") || url.pathname === "/health") {
       return handleAPIRequest(request, env.BACKEND_URL);
     }
@@ -15,7 +15,7 @@ async function handleAPIRequest(request, backendURL) {
     const targetBase = new URL(backendURL);
     const targetUrl = `${targetBase.origin}${url.pathname}${url.search}`;
 
-    // 1. 彻底处理 CORS 预检
+    // 预检请求由 Worker 直接返回，避免后端部署差异影响跨域
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -28,7 +28,7 @@ async function handleAPIRequest(request, backendURL) {
       });
     }
 
-    // 2. 干净的 Header 转发策略
+    // Cloudflare 注入的连接和来源头不转发，后端只接收业务相关 header
     const cleanHeaders = new Headers();
     const forbiddenHeaders = [
       "host",
@@ -50,12 +50,11 @@ async function handleAPIRequest(request, backendURL) {
       }
     }
 
-    // 3. 针对 POST 请求的关键修复：确保 Content-Type 存在
+    // 部分静态前端请求没有显式 Content-Type，Axum JSON extractor 需要该值
     if (request.method === "POST" && !cleanHeaders.has("content-type")) {
       cleanHeaders.set("content-type", "application/json");
     }
 
-    // 4. 发起 fetch，明确指定不使用 Cloudflare 的代理特性
     const response = await fetch(targetUrl, {
       method: request.method,
       headers: cleanHeaders,
@@ -66,19 +65,17 @@ async function handleAPIRequest(request, backendURL) {
       redirect: "follow",
     });
 
-    // 5. 包装响应
     const modifiedResponse = new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers: response.headers,
     });
 
-    // 强制覆盖跨域头，防止后端没给
+    // 静态前端和后端可能分域部署，跨域头在边缘层统一补齐
     modifiedResponse.headers.set("Access-Control-Allow-Origin", "*");
 
     return modifiedResponse;
   } catch (e) {
-    // 如果出错，返回错误详情以便调试
     return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
       status: 502,
       headers: { "Content-Type": "application/json" },

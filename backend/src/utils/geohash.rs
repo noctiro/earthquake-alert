@@ -1,14 +1,12 @@
-//! GeoHash 编码和邻居计算工具
+//! GeoHash 编码和邻居计算
 
 const BASE32: &[u8] = b"0123456789bcdefghjkmnpqrstuvwxyz";
-const PRECISION: usize = 4; // ~20km x 20km
+const PRECISION: usize = 4;
 
-/// GeoHash 编码
 pub fn encode(lat: f64, lon: f64) -> String {
     encode_with_precision(lat, lon, PRECISION)
 }
 
-/// GeoHash 编码 (指定精度)
 pub fn encode_with_precision(lat: f64, lon: f64, precision: usize) -> String {
     let mut lat_range = (-90.0, 90.0);
     let mut lon_range = (-180.0, 180.0);
@@ -18,7 +16,6 @@ pub fn encode_with_precision(lat: f64, lon: f64, precision: usize) -> String {
 
     while hash.len() < precision {
         if bit_count % 2 == 0 {
-            // 偶数位：编码经度
             let mid = (lon_range.0 + lon_range.1) / 2.0;
             if lon >= mid {
                 bits |= 1 << (4 - (bit_count % 5));
@@ -27,7 +24,6 @@ pub fn encode_with_precision(lat: f64, lon: f64, precision: usize) -> String {
                 lon_range.1 = mid;
             }
         } else {
-            // 奇数位：编码纬度
             let mid = (lat_range.0 + lat_range.1) / 2.0;
             if lat >= mid {
                 bits |= 1 << (4 - (bit_count % 5));
@@ -48,18 +44,16 @@ pub fn encode_with_precision(lat: f64, lon: f64, precision: usize) -> String {
     hash
 }
 
-/// 获取相邻的 9 个格子 (包括自己)
+/// 返回中心格子、四向邻居和对角邻居
 pub fn get_neighbors(geohash: &str) -> Vec<String> {
     let mut neighbors = Vec::with_capacity(9);
     neighbors.push(geohash.to_string());
 
-    // 获取4个基本方向的邻居
     let north = neighbor(geohash, Direction::North);
     let south = neighbor(geohash, Direction::South);
     let east = neighbor(geohash, Direction::East);
     let west = neighbor(geohash, Direction::West);
 
-    // 添加基本方向的邻居
     if let Some(ref n) = north {
         neighbors.push(n.clone());
     }
@@ -73,7 +67,6 @@ pub fn get_neighbors(geohash: &str) -> Vec<String> {
         neighbors.push(w.clone());
     }
 
-    // 添加对角线方向的邻居
     if let Some(ref n) = north {
         if let Some(ne) = neighbor(n, Direction::East) {
             neighbors.push(ne);
@@ -91,7 +84,6 @@ pub fn get_neighbors(geohash: &str) -> Vec<String> {
         }
     }
 
-    // 去重
     neighbors.sort();
     neighbors.dedup();
 
@@ -106,7 +98,6 @@ enum Direction {
     West,
 }
 
-/// 计算指定方向的邻居
 fn neighbor(geohash: &str, direction: Direction) -> Option<String> {
     if geohash.is_empty() {
         return None;
@@ -144,7 +135,7 @@ fn neighbor(geohash: &str, direction: Direction) -> Option<String> {
 
     let mut base = parent.to_string();
 
-    // 如果在边界，需要递归处理父级
+    // 边界字符需要先向父级借位，再映射当前字符
     if border_map[type_idx].contains(last_char) && !parent.is_empty() {
         base = neighbor(parent, direction)?;
     }
@@ -162,23 +153,18 @@ mod tests {
 
     #[test]
     fn test_encode_basic() {
-        // 东京塔坐标
         let hash = encode(35.6586, 139.7454);
         assert_eq!(hash.len(), 4);
     }
 
     #[test]
     fn test_encode_known_locations() {
-        // 测试已知位置的 GeoHash
-        // 北京天安门广场 (39.9042, 116.4074) -> wx4g (精度4)
         let beijing = encode_with_precision(39.9042, 116.4074, 4);
         assert_eq!(beijing, "wx4g");
 
-        // 上海东方明珠 (31.2397, 121.4999) -> wtw3 (精度4)
         let shanghai = encode_with_precision(31.2397, 121.4999, 4);
         assert_eq!(shanghai, "wtw3");
 
-        // 伦敦 (51.5074, -0.1278) -> gcpv (精度4)
         let london = encode_with_precision(51.5074, -0.1278, 4);
         assert_eq!(london, "gcpv");
     }
@@ -188,7 +174,6 @@ mod tests {
         let lat = 35.6586;
         let lon = 139.7454;
 
-        // 测试不同精度
         let hash1 = encode_with_precision(lat, lon, 1);
         let hash2 = encode_with_precision(lat, lon, 2);
         let hash3 = encode_with_precision(lat, lon, 3);
@@ -199,7 +184,6 @@ mod tests {
         assert_eq!(hash3.len(), 3);
         assert_eq!(hash5.len(), 5);
 
-        // 较短的哈希应该是较长哈希的前缀
         assert!(hash5.starts_with(&hash1));
         assert!(hash5.starts_with(&hash2));
         assert!(hash5.starts_with(&hash3));
@@ -207,32 +191,24 @@ mod tests {
 
     #[test]
     fn test_encode_boundary_cases() {
-        // 测试边界情况
-
-        // 赤道和本初子午线交点
         let origin = encode_with_precision(0.0, 0.0, 4);
         assert_eq!(origin.len(), 4);
 
-        // 北极附近（不能是正好90度，因为这是边界）
         let north_pole = encode_with_precision(89.9, 0.0, 4);
         assert_eq!(north_pole.len(), 4);
 
-        // 南极附近
         let south_pole = encode_with_precision(-89.9, 0.0, 4);
         assert_eq!(south_pole.len(), 4);
 
-        // 日界线东侧
         let date_line_east = encode_with_precision(0.0, 179.9, 4);
         assert_eq!(date_line_east.len(), 4);
 
-        // 日界线西侧
         let date_line_west = encode_with_precision(0.0, -179.9, 4);
         assert_eq!(date_line_west.len(), 4);
     }
 
     #[test]
     fn test_encode_consistency() {
-        // 相同坐标应该总是产生相同的哈希
         let lat = 35.6586;
         let lon = 139.7454;
 
@@ -246,7 +222,6 @@ mod tests {
 
     #[test]
     fn test_neighbors_count() {
-        // 测试不同的 GeoHash，都应该返回9个邻居（包括自己）
         let test_hashes = vec!["wecn", "wx4g", "wtw3", "gcpv", "s000"];
 
         for hash in test_hashes {
@@ -264,13 +239,10 @@ mod tests {
         let hash = "wecn";
         let neighbors = get_neighbors(hash);
 
-        // 验证邻居数量
         assert_eq!(neighbors.len(), 9);
 
-        // 验证包含自己
         assert!(neighbors.contains(&hash.to_string()));
 
-        // 验证没有重复
         let mut sorted = neighbors.clone();
         sorted.sort();
         sorted.dedup();
@@ -279,7 +251,6 @@ mod tests {
 
     #[test]
     fn test_neighbor_directions() {
-        // 测试单个方向的邻居计算
         let hash = "wecn";
 
         let north = neighbor(hash, Direction::North);
@@ -295,8 +266,6 @@ mod tests {
 
     #[test]
     fn test_neighbor_reciprocity() {
-        // 测试邻居的往返一致性
-        // 如果 B 是 A 的北邻居，那么 A 应该是 B 的南邻居
         let hash = "wecn";
 
         if let Some(north) = neighbor(hash, Direction::North)
@@ -314,20 +283,10 @@ mod tests {
 
     #[test]
     fn test_neighbors_at_boundaries() {
-        // 测试边界附近的邻居计算
-        // 使用不同长度的 GeoHash
-
-        let boundary_hashes = vec![
-            "0",     // 精度1
-            "00",    // 精度2
-            "000",   // 精度3
-            "s000",  // 精度4
-            "pbpbp", // 精度5
-        ];
+        let boundary_hashes = vec!["0", "00", "000", "s000", "pbpbp"];
 
         for hash in boundary_hashes {
             let neighbors = get_neighbors(hash);
-            // 即使在边界，也应该能计算出邻居（可能少于9个，但至少应该有中心点）
             assert!(
                 !neighbors.is_empty(),
                 "GeoHash {} 应该至少有1个元素（自己）",
@@ -339,7 +298,6 @@ mod tests {
 
     #[test]
     fn test_neighbors_uniqueness() {
-        // 测试相邻区域不会有重复
         let test_cases = vec!["wecn", "wx4g", "wtw3", "gcpv", "9q5", "dqc", "u4pr"];
 
         for hash in test_cases {
@@ -361,17 +319,14 @@ mod tests {
 
     #[test]
     fn test_encode_nearby_points() {
-        // 测试非常接近的点是否产生相同或相邻的哈希
         let base_lat = 35.6586;
         let base_lon = 139.7454;
 
         let hash1 = encode(base_lat, base_lon);
 
-        // 非常小的偏移（约10米）
         let hash2 = encode(base_lat + 0.0001, base_lon);
         let hash3 = encode(base_lat, base_lon + 0.0001);
 
-        // 在精度4的情况下，这么小的偏移应该产生相同或相邻的哈希
         let neighbors1 = get_neighbors(&hash1);
         assert!(neighbors1.contains(&hash1));
         assert!(neighbors1.contains(&hash2) || hash1 == hash2);
@@ -380,7 +335,6 @@ mod tests {
 
     #[test]
     fn test_all_base32_chars() {
-        // 验证编码使用正确的 base32 字符集
         let test_coords = vec![
             (0.0, 0.0),
             (45.0, 45.0),
@@ -403,7 +357,6 @@ mod tests {
 
     #[test]
     fn test_empty_geohash() {
-        // 测试空字符串的边界情况
         let result = neighbor("", Direction::North);
         assert!(result.is_none(), "空 GeoHash 应该返回 None");
     }
@@ -413,38 +366,30 @@ mod tests {
         let lat = 35.6586;
         let lon = 139.7454;
 
-        // 更高精度的哈希应该更准确地代表位置
-        // 测试方法：相同精度的不同位置应该产生不同的哈希
         let hash1_p3 = encode_with_precision(lat, lon, 3);
         let hash2_p3 = encode_with_precision(lat + 1.0, lon, 3);
 
-        // 精度3应该能区分 1 度量级的差异。
         assert_ne!(hash1_p3, hash2_p3, "精度3应该能区分1度差异");
     }
 
     #[test]
     fn test_more_known_locations() {
-        // 纽约自由女神像 (40.6892, -74.0445)
         let ny = encode_with_precision(40.6892, -74.0445, 9);
         assert_eq!(ny, "dr5r7p4ry");
 
-        // 巴黎埃菲尔铁塔 (48.8584, 2.2945)
         let paris = encode_with_precision(48.8584, 2.2945, 5);
         assert_eq!(paris, "u09tu");
 
-        // 悉尼歌剧院 (-33.8568, 151.2153)
         let sydney = encode_with_precision(-33.8568, 151.2153, 5);
         assert_eq!(sydney, "r3gx2");
 
-        // 东京 (35.6762, 139.6503)
         let tokyo = encode_with_precision(35.6762, 139.6503, 9);
         assert_eq!(tokyo, "xn76cydhz");
     }
 
     #[test]
     fn test_negative_coordinates() {
-        // 南美洲南半球，西半球
-        let south_america = encode_with_precision(-23.5505, -46.6333, 4); // 圣保罗
+        let south_america = encode_with_precision(-23.5505, -46.6333, 4);
         assert_eq!(south_america.len(), 4);
         assert!(
             south_america
@@ -453,17 +398,14 @@ mod tests {
                 .is_some_and(|first| BASE32.contains(&(first as u8)))
         );
 
-        // 南极洲
         let antarctica = encode_with_precision(-75.0, -120.0, 4);
         assert_eq!(antarctica.len(), 4);
 
-        // 四个象限的测试
-        let ne = encode_with_precision(45.0, 90.0, 3); // 东北
-        let nw = encode_with_precision(45.0, -90.0, 3); // 西北
-        let se = encode_with_precision(-45.0, 90.0, 3); // 东南
-        let sw = encode_with_precision(-45.0, -90.0, 3); // 西南
+        let ne = encode_with_precision(45.0, 90.0, 3);
+        let nw = encode_with_precision(45.0, -90.0, 3);
+        let se = encode_with_precision(-45.0, 90.0, 3);
+        let sw = encode_with_precision(-45.0, -90.0, 3);
 
-        // 所有象限应该产生不同的哈希
         assert_ne!(ne, nw);
         assert_ne!(ne, se);
         assert_ne!(ne, sw);
@@ -474,18 +416,16 @@ mod tests {
 
     #[test]
     fn test_extreme_coordinates() {
-        // 测试接近极限的坐标
         let extreme_cases = vec![
-            (89.9999, 179.9999),   // 接近最大值
-            (-89.9999, -179.9999), // 接近最小值
-            (0.0001, 0.0001),      // 接近零但不是零
-            (-0.0001, -0.0001),    // 负方向接近零
+            (89.9999, 179.9999),
+            (-89.9999, -179.9999),
+            (0.0001, 0.0001),
+            (-0.0001, -0.0001),
         ];
 
         for (lat, lon) in extreme_cases {
             let hash = encode_with_precision(lat, lon, 6);
             assert_eq!(hash.len(), 6);
-            // 验证所有字符都是有效的 base32
             for c in hash.chars() {
                 assert!(
                     BASE32.contains(&(c as u8)),
@@ -501,7 +441,6 @@ mod tests {
 
     #[test]
     fn test_geohash_prefix_hierarchy() {
-        // 测试 GeoHash 的层级关系：较长的哈希应该以较短的哈希为前缀
         let lat = 39.9042;
         let lon = 116.4074;
 
@@ -512,7 +451,6 @@ mod tests {
         let h5 = encode_with_precision(lat, lon, 5);
         let h6 = encode_with_precision(lat, lon, 6);
 
-        // 验证前缀关系
         assert!(h2.starts_with(&h1));
         assert!(h3.starts_with(&h2));
         assert!(h4.starts_with(&h3));
@@ -522,44 +460,35 @@ mod tests {
 
     #[test]
     fn test_same_precision_nearby_points_share_prefix() {
-        // 测试附近的点在较低精度下应该共享前缀
         let base_lat = 35.6586;
         let base_lon = 139.7454;
 
-        // 相距约1公里的点
         let hash1 = encode_with_precision(base_lat, base_lon, 6);
         let hash2 = encode_with_precision(base_lat + 0.01, base_lon, 6);
         let hash3 = encode_with_precision(base_lat, base_lon + 0.01, 6);
 
-        // 前3-4个字符应该相同（约20-100km范围）
         assert_eq!(&hash1[..3], &hash2[..3]);
         assert_eq!(&hash1[..3], &hash3[..3]);
     }
 
     #[test]
     fn test_distant_points_different_hashes() {
-        // 测试相距很远的点应该产生完全不同的哈希
         let beijing = encode_with_precision(39.9042, 116.4074, 5);
         let newyork = encode_with_precision(40.7128, -74.0060, 5);
         let sydney = encode_with_precision(-33.8688, 151.2093, 5);
 
-        // 不同大陆的城市应该有不同的哈希
         assert_ne!(beijing, newyork);
         assert_ne!(beijing, sydney);
         assert_ne!(newyork, sydney);
 
-        // 它们的第一个字符也应该不同
         assert_ne!(beijing.chars().next(), newyork.chars().next());
     }
 
     #[test]
     fn test_neighbors_symmetry() {
-        // 测试邻居关系的对称性
-        // 注意：在某些边界情况下，邻居关系可能不完全对称
         let hash = "wx4g";
         let neighbors = get_neighbors(hash);
 
-        // 对于大部分邻居（非边界情况），检查对称性
         let mut symmetric_count = 0;
 
         for neighbor_hash in &neighbors {
@@ -571,7 +500,6 @@ mod tests {
             }
         }
 
-        // 大部分邻居应该是对称的（至少 50%）
         assert!(
             symmetric_count >= (neighbors.len() - 1) / 2,
             "至少一半的邻居关系应该是对称的"
@@ -580,7 +508,6 @@ mod tests {
 
     #[test]
     fn test_neighbors_different_precisions() {
-        // 测试不同精度下的邻居计算
         let precisions = vec![("w", 1), ("wx", 2), ("wx4", 3), ("wx4g", 4), ("wx4g0", 5)];
 
         for (hash, precision) in precisions {
@@ -596,7 +523,6 @@ mod tests {
 
     #[test]
     fn test_encoding_is_deterministic() {
-        // 测试编码的确定性：多次编码相同坐标应该总是产生相同结果
         let test_coords = vec![
             (35.6586, 139.7454),
             (0.0, 0.0),
@@ -609,7 +535,6 @@ mod tests {
                 .map(|_| encode_with_precision(lat, lon, 5))
                 .collect();
 
-            // 所有哈希应该相同
             for hash in &hashes[1..] {
                 assert_eq!(
                     &hashes[0], hash,
@@ -622,14 +547,11 @@ mod tests {
 
     #[test]
     fn test_neighbor_corners() {
-        // 测试角落邻居（对角线）的计算
         let hash = "wx4g";
         let neighbors = get_neighbors(hash);
 
-        // 应该有9个邻居（8个方向 + 中心）
         assert_eq!(neighbors.len(), 9);
 
-        // 验证所有邻居的长度都相同
         for neighbor in &neighbors {
             assert_eq!(
                 neighbor.len(),
@@ -643,7 +565,6 @@ mod tests {
 
     #[test]
     fn test_geohash_characters_valid() {
-        // 测试大量随机坐标，确保生成的 GeoHash 只包含有效字符
         let test_cases = vec![
             (0.0, 0.0),
             (30.0, 60.0),
@@ -678,20 +599,17 @@ mod tests {
 
     #[test]
     fn test_meridian_and_equator() {
-        // 测试本初子午线和赤道附近的编码
         let equator_west = encode_with_precision(0.0, -90.0, 5);
         let equator_east = encode_with_precision(0.0, 90.0, 5);
         let meridian_north = encode_with_precision(45.0, 0.0, 5);
         let meridian_south = encode_with_precision(-45.0, 0.0, 5);
 
-        // 它们应该都是不同的
         assert_ne!(equator_west, equator_east);
         assert_ne!(meridian_north, meridian_south);
     }
 
     #[test]
     fn test_precision_zero_handling() {
-        // 测试精度为0的边界情况（虽然不实用，但应该能处理）
         let hash = encode_with_precision(35.6586, 139.7454, 0);
         assert_eq!(hash.len(), 0);
         assert_eq!(hash, "");
@@ -699,15 +617,12 @@ mod tests {
 
     #[test]
     fn test_high_precision_encoding() {
-        // 测试高精度编码（精度10及以上）
         let lat = 35.6586;
         let lon = 139.7454;
 
         for precision in 8..=12 {
             let hash = encode_with_precision(lat, lon, precision);
             assert_eq!(hash.len(), precision);
-
-            // 验证所有字符有效
             for ch in hash.chars() {
                 assert!(BASE32.contains(&(ch as u8)));
             }
@@ -716,7 +631,6 @@ mod tests {
 
     #[test]
     fn test_neighbor_calculation_stability() {
-        // 测试邻居计算的稳定性：相同的输入应该总是产生相同的输出
         let test_hashes = vec!["wecn", "wx4g", "gcpv", "9q5"];
 
         for hash in test_hashes {
