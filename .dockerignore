@@ -1,0 +1,11 @@
+.git
+data
+dist
+build
+coverage
+config.yaml
+bark.db
+eew-bark
+eew-bark.exe
+*.log
+*.tar.gz

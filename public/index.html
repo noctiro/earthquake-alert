@@ -1,0 +1,1811 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wolfx 地震预警订阅</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23d92d20'/%3E%3Cpath d='M7 36h10l7-16 12 28 9-21 6 9h6' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --panel: rgba(255,255,255,.92);
+      --text: #171717;
+      --muted: #666d78;
+      --line: #d7dce2;
+      --primary: #d92d20;
+      --primary-strong: #b42318;
+      --soft: #f1f3f5;
+      --ok-bg: #e7f7ed;
+      --ok: #087443;
+      --err-bg: #fde8e7;
+      --err: #b42318;
+      --info-bg: #eaf3ff;
+      --info: #175cd3;
+      --warn-bg: #fff3d6;
+      --warn: #9a5b00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101214;
+        --panel: rgba(28,31,35,.92);
+        --text: #f4f5f6;
+        --muted: #a5acb5;
+        --line: #3a4048;
+        --soft: #24282e;
+        --ok-bg: rgba(8,116,67,.2);
+        --err-bg: rgba(180,35,24,.22);
+        --info-bg: rgba(23,92,211,.22);
+        --warn-bg: rgba(154,91,0,.22);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(760px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 36px 0 42px;
+    }
+    header {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .topline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 46px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 7vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+      min-width: 0;
+    }
+    .badge {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 34px;
+      min-width: 104px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #17b26a;
+      box-shadow: 0 0 0 4px rgba(23,178,106,.15);
+    }
+    .subhead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .top-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .top-nav a {
+      min-height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 850;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 13px;
+    }
+    .top-nav a.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(16, 24, 40, .08);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .notify-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: visible;
+      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+    }
+    .threshold-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--soft) 62%, transparent);
+    }
+    .notify-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .setting-title {
+      font-weight: 850;
+      line-height: 1.25;
+    }
+    .setting-note {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .rule-rows {
+      display: grid;
+      gap: 0;
+    }
+    .rule-row {
+      display: grid;
+      grid-template-columns: minmax(150px, .9fr) minmax(178px, 1.1fr) 52px 38px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+    }
+    .rule-row:first-child { border-top: 0; }
+    .rule-name {
+      font-weight: 850;
+      line-height: 1.2;
+    }
+    .rule-desc {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .range-fields {
+      display: grid;
+      grid-template-columns: minmax(48px, 64px) auto minmax(48px, 64px);
+      gap: 7px;
+      align-items: center;
+      justify-content: start;
+    }
+    .range-fields span {
+      color: var(--muted);
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .range-fields input {
+      height: 36px;
+      text-align: center;
+      font-weight: 850;
+      padding: 0 6px;
+      background: var(--panel);
+    }
+    .range-fields input[readonly] {
+      color: var(--muted);
+      background: var(--soft);
+    }
+    .range-fields.open-range {
+      grid-template-columns: minmax(54px, 74px) auto;
+    }
+    .band-choice {
+      position: relative;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 32px 5px 10px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
+    }
+    .band-choice.open {
+      z-index: 20;
+      box-shadow: 0 12px 28px rgba(16, 24, 40, .14);
+      transform: translateY(-1px);
+    }
+    .band-choice::after {
+      content: "";
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: translateY(-65%) rotate(45deg);
+      opacity: .65;
+      pointer-events: none;
+    }
+    .band-text {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+    }
+    .band-main {
+      font-weight: 900;
+      line-height: 1.15;
+      font-size: 14px;
+    }
+    .band-sub {
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+      opacity: .78;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .band-level {
+      display: none;
+    }
+    .band-menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      display: none;
+      gap: 5px;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 18px 38px rgba(16, 24, 40, .18);
+      z-index: 25;
+    }
+    .band-choice.open .band-menu {
+      display: grid;
+    }
+    .band-option {
+      min-height: 40px;
+      height: auto;
+      border-radius: 8px;
+      padding: 6px 9px;
+      border: 1px solid transparent;
+      justify-content: flex-start;
+      text-align: left;
+      background: transparent;
+      color: inherit;
+      font-size: 14px;
+    }
+    .band-option.active {
+      border-color: currentColor;
+      background: rgba(255, 255, 255, .48);
+    }
+    .remove-rule, .level-test {
+      width: 38px;
+      height: 36px;
+      border-radius: 8px;
+      padding: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 900;
+    }
+    .remove-rule {
+      font-size: 20px;
+      line-height: 1;
+    }
+    .reset-rules, .add-rule {
+      height: 40px;
+      padding: 0 13px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 850;
+    }
+    .notify-warning {
+      display: none;
+      padding: 9px 12px 11px;
+      border-top: 1px solid rgba(217, 45, 32, .16);
+      color: var(--danger);
+      background: rgba(217, 45, 32, .07);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+    .notify-warning.show {
+      display: block;
+    }
+    .level-passive { color: #344054; background: #eef2f6; border-color: #d5dbe5; }
+    .level-active { color: #175cd3; background: #eff6ff; border-color: #bfd7ff; }
+    .level-critical { color: #b42318; background: #fff1f0; border-color: #ffc9c4; }
+    .level-test {
+      font-size: 12px;
+      color: var(--text);
+    }
+    .field { margin-bottom: 18px; }
+    .search-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 96px;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .search-row button {
+      height: 48px;
+    }
+    .address-results {
+      display: none;
+      margin: 0 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--panel) 96%, var(--bg));
+    }
+    .address-results.visible { display: block; }
+    .address-result {
+      width: 100%;
+      height: auto;
+      min-height: 50px;
+      display: block;
+      border-radius: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      background: transparent;
+      font-weight: 650;
+      line-height: 1.35;
+    }
+    .address-result:last-child { border-bottom: 0; }
+    .address-result span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    input, select {
+      width: 100%;
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 13px;
+      background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    }
+    small {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .key-notice {
+      display: none;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--info);
+      background: var(--info-bg);
+    }
+    .key-notice.visible { display: block; }
+    .key-notice.success {
+      color: var(--ok);
+      background: var(--ok-bg);
+    }
+    #map {
+      height: 315px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--soft);
+      margin-bottom: 12px;
+    }
+    .location-toolbar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .draft-location {
+      display: none;
+      margin: -2px 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: color-mix(in srgb, var(--panel) 90%, var(--bg));
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .draft-location.visible { display: block; }
+    .draft-location strong {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+    .locations-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .location-notice {
+      display: none;
+      margin: -2px 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--soft) 78%, transparent);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .location-notice.visible { display: block; }
+    .location-notice.error { color: var(--err); background: var(--err-bg); }
+    .location-notice.success { color: var(--ok); background: var(--ok-bg); }
+    .location-notice.info { color: var(--info); background: var(--info-bg); }
+    .location-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 52px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: color-mix(in srgb, var(--soft) 72%, transparent);
+    }
+    .location-name {
+      font-weight: 800;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .location-coords {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .location-remove {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      min-width: 38px;
+      border-radius: 8px;
+      color: var(--err);
+      background: var(--err-bg);
+      line-height: 1;
+      padding: 0;
+    }
+    .locations-empty {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+    }
+    .coord-fields {
+      display: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%); }
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    button {
+      height: 48px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--soft);
+    }
+    button.primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    button.primary:hover { background: var(--primary-strong); }
+    button:disabled { opacity: .65; cursor: wait; }
+    .status {
+      display: none;
+      margin: 2px 0 16px;
+      padding: 13px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .status.visible { display: block; }
+    .status.success { color: var(--ok); background: var(--ok-bg); }
+    .status.error { color: var(--err); background: var(--err-bg); }
+    .status.info { color: var(--info); background: var(--info-bg); }
+    .status.warning { color: var(--warn); background: var(--warn-bg); }
+    .tutorial-widget {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 1000;
+      width: min(420px, calc(100vw - 28px));
+      display: grid;
+      gap: 10px;
+      justify-items: end;
+      pointer-events: none;
+    }
+    .tutorial-toggle, .tutorial-panel {
+      pointer-events: auto;
+    }
+    .tutorial-toggle {
+      min-width: 112px;
+      height: 44px;
+      padding: 0 16px;
+      background: var(--text);
+      color: var(--bg);
+      box-shadow: 0 12px 28px rgba(16, 24, 40, .2);
+    }
+    .tutorial-panel {
+      display: none;
+      width: 100%;
+      max-height: min(640px, calc(100vh - 92px));
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel) 98%, var(--bg));
+      box-shadow: 0 22px 60px rgba(16, 24, 40, .22);
+    }
+    .tutorial-widget.open .tutorial-panel { display: block; }
+    .tutorial-head {
+      position: sticky;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 98%, var(--bg));
+    }
+    .tutorial-title {
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .tutorial-close {
+      width: 34px;
+      height: 34px;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .tutorial-content {
+      padding: 14px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .tutorial-content ol {
+      margin: 0;
+      padding-left: 22px;
+    }
+    .tutorial-content li {
+      margin: 0 0 16px;
+      padding-left: 2px;
+    }
+    .tutorial-images {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0 2px;
+    }
+    .tutorial-images img {
+      flex: 0 0 auto;
+      width: 104px;
+      max-height: 220px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      cursor: zoom-in;
+    }
+    .tutorial-url {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      vertical-align: middle;
+    }
+    .tutorial-url a {
+      word-break: break-all;
+      color: var(--info);
+      font-weight: 750;
+    }
+    .copy-url {
+      width: auto;
+      height: 28px;
+      padding: 0 9px;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--info);
+      background: var(--info-bg);
+    }
+    .image-viewer {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0, 0, 0, .78);
+    }
+    .image-viewer.open { display: flex; }
+    .image-viewer img {
+      max-width: min(100%, 980px);
+      max-height: calc(100vh - 84px);
+      object-fit: contain;
+      border-radius: 8px;
+      background: #111;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .38);
+    }
+    .image-viewer-close {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 42px;
+      height: 42px;
+      color: #fff;
+      background: rgba(255, 255, 255, .16);
+      font-size: 24px;
+      line-height: 1;
+    }
+    footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+    a { color: inherit; }
+    @media (max-width: 640px) {
+      main { padding-top: 22px; }
+      .topline { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-height: 40px; }
+      h1 { font-size: clamp(24px, 6.4vw, 30px); line-height: 1.12; }
+      .badge { min-width: 98px; height: 32px; padding: 0 10px; font-size: 12px; }
+      .panel { padding: 16px; }
+      .grid, .threshold-row, .actions { grid-template-columns: 1fr; }
+      .notify-actions { justify-content: stretch; }
+      .notify-actions button { flex: 1 1 0; }
+      .search-row { grid-template-columns: 1fr; }
+      .location-toolbar { grid-template-columns: 1fr; }
+      input, select, textarea { font-size: 16px; }
+      .rule-row { grid-template-columns: minmax(94px, 1fr) minmax(102px, 1.15fr) 38px 36px; gap: 4px; padding: 8px 6px; align-items: center; justify-content: stretch; }
+      .rule-row .range-fields { grid-column: 1 / 2; }
+      .rule-row .band-choice { grid-column: 2 / 3; width: 100%; min-width: 0; }
+      .rule-row .level-test { grid-column: 3 / 4; }
+      .rule-row .remove-rule { grid-column: 4 / 5; }
+      .rule-row .level-test, .rule-row .remove-rule { width: 100%; height: 36px; }
+      .band-choice { min-height: 36px; padding: 4px 24px 4px 8px; }
+      .band-choice::after { right: 9px; width: 6px; height: 6px; }
+      .band-menu { left: 0; right: auto; width: min(210px, calc(100vw - 44px)); }
+      .range-fields { width: 100%; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr); gap: 2px; justify-content: stretch; }
+      .range-fields input { height: 36px; padding: 0 3px; }
+      .range-fields span { text-align: center; }
+      .band-main { font-size: 13px; }
+      .band-sub { font-size: 10px; }
+      .level-test { font-size: 11px; }
+      .range-fields.open-range { grid-template-columns: minmax(0, 1fr) auto; }
+      #map { height: 270px; }
+      .tutorial-widget { right: 14px; bottom: 14px; width: calc(100vw - 28px); }
+      .tutorial-panel { max-height: min(620px, calc(100vh - 82px)); }
+      .tutorial-images img { width: 92px; max-height: 190px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline">
+        <h1>Wolfx 地震预警订阅</h1>
+        <div class="badge"><span class="dot"></span><span id="stats">加载中</span></div>
+      </div>
+      <nav class="top-nav" aria-label="页面导航">
+        <a class="active" href="/">订阅页</a>
+        <a href="/manage">测试页</a>
+      </nav>
+      <p class="subhead">填写 Bark Key 和监测位置。收到 Wolfx 地震预警首报后，服务会按你的位置估算 S 波到达时间和本地烈度，并尽快推送到 iOS。</p>
+    </header>
+
+    <section class="panel">
+      <form id="form">
+        <div class="field">
+          <label for="bark-id">Bark Key</label>
+          <input id="bark-id" name="bark_id" autocomplete="off" required maxlength="256" placeholder="例如：vRvm6tubpnHJYsX9fE2EYQ">
+          <small>支持填写完整 Bark URL，也支持只填写 Key。</small>
+          <div id="key-notice" class="key-notice"></div>
+        </div>
+
+        <div class="field">
+          <label>监测位置</label>
+          <div class="search-row">
+            <input id="address-query" type="search" autocomplete="off" placeholder="搜索地址、小区、学校或区县">
+            <button type="button" id="address-search">搜索</button>
+          </div>
+          <div id="address-results" class="address-results"></div>
+          <div id="map"></div>
+          <div id="draft-location" class="draft-location"></div>
+          <div class="location-toolbar">
+            <button type="button" id="locate">定位当前位置</button>
+            <button type="button" id="add-location">添加当前地点</button>
+          </div>
+          <div id="location-notice" class="location-notice"></div>
+          <div id="locations-list" class="locations-list"></div>
+          <small>地震发生时，系统会自动选择距离震源最近的地点计算烈度、倒计时和通知级别。</small>
+        </div>
+
+        <div class="grid coord-fields" aria-hidden="true">
+          <div class="field">
+            <label for="latitude">纬度</label>
+            <input id="latitude" type="number" min="-90" max="90" step="0.0001" placeholder="31.2304">
+          </div>
+          <div class="field">
+            <label for="longitude">经度</label>
+            <input id="longitude" type="number" min="-180" max="180" step="0.0001" placeholder="121.4737">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>推送与通知级别</label>
+          <div class="notify-card">
+            <div class="threshold-row">
+              <div>
+                <div class="setting-title">通知级别规则</div>
+                <div class="setting-note">按预估烈度选择 Bark 通知级别。未覆盖的烈度不会推送，可按需添加或删除规则。</div>
+              </div>
+              <div class="notify-actions">
+                <button class="reset-rules" id="reset-rules" type="button">恢复默认</button>
+                <button class="add-rule" id="add-rule" type="button">添加规则</button>
+              </div>
+            </div>
+            <div class="rule-rows" id="notify-bands"></div>
+            <div class="notify-warning" id="notify-warning" role="alert"></div>
+          </div>
+          <small>默认：预估烈度 0-1 为低烈度 passive，2 为中等烈度 active，3 及以上为高烈度 critical + call。</small>
+        </div>
+
+        <div id="status" class="status" role="alert"></div>
+
+        <div class="actions">
+          <button class="primary" id="submit" type="submit">订阅 / 更新</button>
+          <button id="unsubscribe" type="button">取消订阅</button>
+        </div>
+      </form>
+    </section>
+
+    <footer>
+      数据源：<a href="https://wolfx.jp" target="_blank" rel="noreferrer">Wolfx API</a>。这是第三方聚合预警辅助服务，不替代官方防灾系统。
+    </footer>
+  </main>
+
+  <div class="tutorial-widget" id="tutorial-widget">
+    <section class="tutorial-panel" aria-label="订阅教程">
+      <div class="tutorial-head">
+        <div class="tutorial-title">订阅教程</div>
+        <button type="button" class="tutorial-close" id="tutorial-close" aria-label="关闭教程">×</button>
+      </div>
+      <div class="tutorial-content" id="tutorial-content">正在加载教程...</div>
+    </section>
+    <button type="button" class="tutorial-toggle" id="tutorial-toggle">订阅教程</button>
+  </div>
+  <div class="image-viewer" id="image-viewer" aria-hidden="true">
+    <button type="button" class="image-viewer-close" id="image-viewer-close" aria-label="关闭图片">×</button>
+    <img id="image-viewer-img" alt="">
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const api = location.origin;
+    const defaultBarkServer = "https://api.day.app";
+    const form = document.querySelector("#form");
+    const statusBox = document.querySelector("#status");
+    const barkInput = document.querySelector("#bark-id");
+    const keyNotice = document.querySelector("#key-notice");
+    const latInput = document.querySelector("#latitude");
+    const lonInput = document.querySelector("#longitude");
+    const addressQuery = document.querySelector("#address-query");
+    const addressSearch = document.querySelector("#address-search");
+    const addressResults = document.querySelector("#address-results");
+    const notifyBandsEl = document.querySelector("#notify-bands");
+    const addRuleBtn = document.querySelector("#add-rule");
+    const resetRulesBtn = document.querySelector("#reset-rules");
+    const notifyWarning = document.querySelector("#notify-warning");
+    const stats = document.querySelector("#stats");
+    const submit = document.querySelector("#submit");
+    const unsubscribe = document.querySelector("#unsubscribe");
+    const locate = document.querySelector("#locate");
+    const addLocation = document.querySelector("#add-location");
+    const locationsList = document.querySelector("#locations-list");
+    const draftLocation = document.querySelector("#draft-location");
+    const locationNotice = document.querySelector("#location-notice");
+    const tutorialWidget = document.querySelector("#tutorial-widget");
+    const tutorialToggle = document.querySelector("#tutorial-toggle");
+    const tutorialClose = document.querySelector("#tutorial-close");
+    const tutorialContent = document.querySelector("#tutorial-content");
+    const imageViewer = document.querySelector("#image-viewer");
+    const imageViewerImg = document.querySelector("#image-viewer-img");
+    const imageViewerClose = document.querySelector("#image-viewer-close");
+    let barkNormalizeBusy = false;
+    let selectedBarkServer = defaultBarkServer;
+    let keyVerifySeq = 0;
+    let tutorialLoaded = false;
+
+    const map = L.map("map", { zoomControl: true, attributionControl: false }).setView([35.0, 105.0], 4);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 18 }).addTo(map);
+    let marker;
+    let selectedLocations = [];
+    let locationMarkers = [];
+    let draftLocationName = "";
+    let draftLocationResolved = false;
+    let notifyBands = defaultNotifyBands();
+
+    function show(message, type = "info", html = false) {
+      statusBox.className = "status visible " + type;
+      if (html) statusBox.innerHTML = message;
+      else statusBox.textContent = message;
+    }
+
+    function showLocationNotice(message, type = "") {
+      if (!message) {
+        locationNotice.className = "location-notice";
+        locationNotice.textContent = "";
+        return;
+      }
+      locationNotice.className = "location-notice visible" + (type ? " " + type : "");
+      locationNotice.textContent = message;
+    }
+
+    function showKeyNotice(message, type = "info") {
+      keyNotice.className = "key-notice visible" + (type === "success" ? " success" : "");
+      keyNotice.textContent = message;
+    }
+
+    function setPosition(lat, lon, zoom = 10) {
+      const y = Number(lat);
+      const x = Number(lon);
+      if (!Number.isFinite(y) || !Number.isFinite(x)) return;
+      latInput.value = y.toFixed(4);
+      lonInput.value = x.toFixed(4);
+      if (!marker) marker = L.marker([y, x]).addTo(map);
+      marker.setLatLng([y, x]);
+      map.setView([y, x], zoom);
+      renderDraftLocation();
+    }
+
+    function renderDraftLocation() {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        draftLocation.className = "draft-location";
+        draftLocation.innerHTML = "";
+        return;
+      }
+      const name = escapeHTML(draftLocationName || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+      const coords = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      draftLocation.className = "draft-location visible";
+      draftLocation.innerHTML = `<strong>${name}</strong><span>${coords}</span>`;
+    }
+
+    function currentLocationFromInputs() {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      const fallbackName = draftLocationName || addressQuery.value.trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      return { name: fallbackName, latitude: lat, longitude: lon };
+    }
+
+    function normalizeLocationList(items) {
+      const seen = new Set();
+      const list = [];
+      (Array.isArray(items) ? items : []).forEach((item) => {
+        const lat = Number(item.latitude ?? item.lat);
+        const lon = Number(item.longitude ?? item.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({
+          name: String(item.address || item.name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`).trim(),
+          latitude: lat,
+          longitude: lon
+        });
+      });
+      return list.slice(0, 3);
+    }
+
+    function renderLocations() {
+      locationMarkers.forEach((item) => item.remove());
+      locationMarkers = [];
+      addLocation.disabled = selectedLocations.length >= 3;
+      if (selectedLocations.length >= 3) {
+        showLocationNotice("已添加 3 个监测地点，不能继续添加。", "error");
+      }
+      if (!selectedLocations.length) {
+        locationsList.innerHTML = '<div class="locations-empty">尚未添加监测地点。搜索、定位或点击地图后，点“添加当前地点”。</div>';
+        return;
+      }
+      locationsList.innerHTML = selectedLocations.map((item, index) => {
+        const name = escapeHTML(item.name || `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`);
+        const coords = `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`;
+        return `<div class="location-item" data-index="${index}"><div><div class="location-name">${name}</div><div class="location-coords">${coords}</div></div><button class="location-remove" type="button" data-action="remove" aria-label="删除地点">×</button></div>`;
+      }).join("");
+      selectedLocations.forEach((item, index) => {
+        const savedMarker = L.circleMarker([item.latitude, item.longitude], {
+          radius: 6,
+          color: "#175cd3",
+          weight: 2,
+          fillColor: "#175cd3",
+          fillOpacity: .75
+        }).addTo(map);
+        savedMarker.bindTooltip(item.name || `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`);
+        locationMarkers.push(savedMarker);
+      });
+    }
+
+    async function resolveLocationName(lat, lon) {
+      try {
+        const res = await fetch(api + "/api/reverse-geocode?lat=" + encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lon));
+        const json = await res.json();
+        if (!res.ok || !json.success || !json.data) throw new Error(json.message || "解析失败");
+        const name = String(json.data.name || json.data.address || "").trim();
+        return name || `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
+      } catch {
+        return `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
+      }
+    }
+
+    function shouldResolveLocationName(name) {
+      const value = String(name || "").trim();
+      return !value || value === "当前位置" || value.includes("正在解析") || /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(value);
+    }
+
+    async function addCurrentLocation(preResolvedItem = null, options = {}) {
+      if (selectedLocations.length >= 3) {
+        showLocationNotice("已添加 3 个监测地点，不能继续添加。", "error");
+        return false;
+      }
+      const item = preResolvedItem || currentLocationFromInputs();
+      if (!item) {
+        showLocationNotice("请先选择或输入一个有效地点。", "error");
+        return false;
+      }
+      if (!options.skipResolve && !draftLocationResolved && shouldResolveLocationName(item.name)) {
+        addLocation.disabled = true;
+        showLocationNotice("正在解析地点名称...", "info");
+        item.name = await resolveLocationName(item.latitude, item.longitude);
+        addLocation.disabled = false;
+      }
+      const nextLocations = normalizeLocationList([...selectedLocations, item]);
+      if (nextLocations.length === selectedLocations.length) {
+        showLocationNotice("这个监测地点已添加或坐标无效。", "error");
+        return false;
+      }
+      selectedLocations = nextLocations;
+      draftLocationName = "";
+      draftLocationResolved = false;
+      renderLocations();
+      if (selectedLocations.length >= 3) showLocationNotice("已添加 3 个监测地点，不能继续添加。", "error");
+      else showLocationNotice("", "");
+      show("已添加监测地点。", "success");
+      return true;
+    }
+
+    function focusLocation(index) {
+      const item = selectedLocations[index];
+      if (!item) return;
+      draftLocationName = item.name || "";
+      draftLocationResolved = true;
+      setPosition(item.latitude, item.longitude, 13);
+      renderDraftLocation();
+    }
+
+    function hideAddressResults() {
+      addressResults.className = "address-results";
+      addressResults.innerHTML = "";
+    }
+
+    function renderAddressResults(items) {
+      if (!items.length) {
+        hideAddressResults();
+        return;
+      }
+      addressResults.innerHTML = items.map((item, index) => {
+        const name = escapeHTML(item.name || "匹配地址");
+        const address = escapeHTML(item.address || `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`);
+        return `<button type="button" class="address-result" data-index="${index}">${name}<span>${address}</span></button>`;
+      }).join("");
+      addressResults.className = "address-results visible";
+      addressResults._items = items;
+    }
+
+    async function searchAddress() {
+      const query = addressQuery.value.trim();
+      if (query.length < 2) return show("请输入至少两个字的地址。", "error");
+      addressSearch.disabled = true;
+      show("正在搜索地址...", "info");
+      try {
+        const res = await fetch(api + "/api/geocode?q=" + encodeURIComponent(query));
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "地址搜索失败");
+        renderAddressResults(Array.isArray(json.data) ? json.data : []);
+        show("请选择一个搜索结果，或继续手动点击地图。", "info");
+      } catch (err) {
+        hideAddressResults();
+        show(err.message || "地址搜索失败，请手动点击地图或输入经纬度。", "error");
+      } finally {
+        addressSearch.disabled = false;
+      }
+    }
+
+    function clampInt(value, min, max, fallback) {
+      const parsed = Math.round(Number(value));
+      if (!Number.isFinite(parsed)) return fallback;
+      return Math.max(min, Math.min(max, parsed));
+    }
+
+    function optionalInt(input) {
+      const value = String(input.value || "").trim();
+      if (value === "") return null;
+      const parsed = Math.round(Number(value));
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function parseBarkInput(value) {
+      let text = String(value || "").trim().replace(/^["']|["']$/g, "");
+      let server = defaultBarkServer;
+      if (!text) return { key: "", server };
+      if (text.includes("://")) {
+        try {
+          const url = new URL(text);
+          const host = url.hostname.toLowerCase();
+          if (url.protocol === "https:" || url.protocol === "http:") {
+            server = url.origin.replace(/\/+$/, "");
+            const first = url.pathname.split("/").filter(Boolean)[0] || "";
+            text = decodeURIComponent(first);
+          }
+        } catch {
+          return { key: text, server };
+        }
+      }
+      return { key: text.trim().replace(/^\/+|\/+$/g, ""), server };
+    }
+
+    function extractBarkKey(value) {
+      return parseBarkInput(value).key;
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function escapeHTML(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function renderInlineMarkdown(text) {
+      return escapeHTML(text).replace(/https?:\/\/[^\s，,。)）]+/g, (url) => {
+        const safe = escapeHTML(url);
+        return `<span class="tutorial-url"><a href="${safe}" target="_blank" rel="noreferrer">${safe}</a><button type="button" class="copy-url" data-copy="${safe}">复制</button></span>`;
+      });
+    }
+
+    function renderTutorialMarkdown(markdown) {
+      const blocks = String(markdown || "").trim().split(/(?=^\d+\.\s)/m).filter(Boolean);
+      const items = blocks.map((block) => {
+        const lines = block.trim().split(/\r?\n/);
+        const first = lines.shift() || "";
+        const title = first.replace(/^\d+\.\s*/, "").trim();
+        const body = [title, ...lines].join("\n");
+        const images = [];
+        const text = body.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+          images.push({ alt, src });
+          return "";
+        }).replace(/\n{2,}/g, "\n").trim();
+        const imageHTML = images.length ? `<div class="tutorial-images">${images.map((img) => `<img src="${escapeHTML(img.src)}" alt="${escapeHTML(img.alt)}" loading="lazy">`).join("")}</div>` : "";
+        return `<li><div>${renderInlineMarkdown(text)}</div>${imageHTML}</li>`;
+      }).join("");
+      return items ? `<ol>${items}</ol>` : "<div>教程暂不可用。</div>";
+    }
+
+    function openImageViewer(src, alt) {
+      imageViewerImg.src = src;
+      imageViewerImg.alt = alt || "";
+      imageViewer.classList.add("open");
+      imageViewer.setAttribute("aria-hidden", "false");
+    }
+
+    function closeImageViewer() {
+      imageViewer.classList.remove("open");
+      imageViewer.setAttribute("aria-hidden", "true");
+      imageViewerImg.removeAttribute("src");
+      imageViewerImg.alt = "";
+    }
+
+    async function copyText(value, button) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          const input = document.createElement("textarea");
+          input.value = value;
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.appendChild(input);
+          input.select();
+          document.execCommand("copy");
+          input.remove();
+        }
+        if (button) {
+          const old = button.textContent;
+          button.textContent = "已复制";
+          setTimeout(() => { button.textContent = old; }, 1200);
+        }
+      } catch {
+        if (button) button.textContent = "复制失败";
+      }
+    }
+
+    async function loadTutorial() {
+      if (tutorialLoaded) return;
+      try {
+        const res = await fetch(api + "/tutorial.md");
+        if (!res.ok) throw new Error("load failed");
+        tutorialContent.innerHTML = renderTutorialMarkdown(await res.text());
+        tutorialLoaded = true;
+      } catch {
+        tutorialContent.textContent = "教程暂不可用。";
+      }
+    }
+
+    async function normalizeBarkInput(visible = false) {
+      if (barkNormalizeBusy) return extractBarkKey(barkInput.value);
+      const raw = barkInput.value;
+      const parsed = parseBarkInput(barkInput.value);
+      const key = parsed.key;
+      selectedBarkServer = parsed.server || defaultBarkServer;
+      const shouldConvert = key && key !== raw.trim() && raw.includes("://");
+      if (shouldConvert && visible) {
+        barkNormalizeBusy = true;
+        showKeyNotice("检测到 Bark 链接，正在提取 Key...");
+        show("检测到 Bark 链接，正在提取 Key...", "info");
+        await delay(650);
+      }
+      if (key && key !== barkInput.value) barkInput.value = key;
+      if (shouldConvert && visible) {
+        showKeyNotice("已从 Bark 链接提取并转换为 Key。", "success");
+        show("已从 Bark 链接提取并转换为 Key。", "success");
+        barkNormalizeBusy = false;
+      }
+      return key;
+    }
+
+    async function verifyBarkKey(visible = true) {
+      const key = await normalizeBarkInput(false);
+      const seq = ++keyVerifySeq;
+      if (!key) return;
+      if (visible) showKeyNotice("正在验证 Bark Key...");
+      try {
+        const res = await fetch(api + "/api/bark-key/" + encodeURIComponent(key));
+        const json = await res.json();
+        if (seq !== keyVerifySeq) return;
+        if (!res.ok || !json.success) throw new Error(json.message || "Bark Key 验证失败");
+        showKeyNotice("Bark Key 已验证。", "success");
+        await syncSubscriptionFromServer(key, visible);
+      } catch (err) {
+        if (seq !== keyVerifySeq) return;
+        showKeyNotice(err.message || "Bark Key 验证失败。");
+      }
+    }
+
+    async function syncSubscriptionFromServer(key, visible = false) {
+      try {
+        const res = await fetch(api + "/api/subscription/" + encodeURIComponent(key));
+        const json = await res.json();
+        if (!res.ok || !json.success || !json.data) return false;
+        const sub = json.data;
+        const locations = normalizeLocationList(sub.locations || [{ name: sub.location_name || "", latitude: sub.latitude, longitude: sub.longitude }]);
+        if (locations.length) {
+          selectedLocations = locations;
+          renderLocations();
+          const first = locations[0];
+          draftLocationName = first.name || "";
+          draftLocationResolved = true;
+          setPosition(first.latitude, first.longitude, 10);
+        }
+        notifyBands = normalizeBands(sub.notify_bands || bandsFromRules(sub.notify_rules));
+        renderNotifyBands();
+        localStorage.setItem("eew_bark_id", key);
+        localStorage.setItem("eew_position", JSON.stringify({
+          lat: Number(sub.latitude),
+          lon: Number(sub.longitude),
+          address: "",
+          locations,
+          bands: notifyBands,
+          rules: sub.notify_rules || null
+        }));
+        if (visible) {
+          showLocationNotice(`已同步服务器上的 ${locations.length} 个监测地点。`, "success");
+          show("已同步当前 Bark Key 的订阅设置。", "success");
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    const notifyLevelOrder = ["passive", "active", "critical"];
+
+    function defaultNotifyBands() {
+      return [
+        { min: 1, max: 1, level: "passive", label: "低烈度" },
+        { min: 2, max: 2, level: "active", label: "中等烈度" },
+        { min: 3, max: 99, level: "critical", label: "高烈度" }
+      ];
+    }
+
+    function bandsFromRules(rules) {
+      if (!rules) return defaultNotifyBands();
+      const passive = Number(rules.passive_max ?? 1);
+      const active = Number(rules.active_max ?? 2);
+      const critical = Number(rules.critical_min ?? active + 1);
+      return [
+        { min: 1, max: passive, level: "passive", label: "低烈度" },
+        { min: passive + 1, max: active, level: "active", label: "中等烈度" },
+        { min: critical, max: 99, level: "critical", label: "高烈度" }
+      ].filter((band) => band.min <= band.max);
+    }
+
+    function normalizeBands(bands) {
+      const source = Array.isArray(bands) && bands.length ? bands : defaultNotifyBands();
+      const seen = new Set();
+      return source.map((band) => {
+        const level = notifyLevelOrder.includes(String(band.level || "").toLowerCase()) ? String(band.level).toLowerCase() : "passive";
+        return {
+          min: clampInt(band.min, 0, 7, 0),
+          max: level === "critical" ? 99 : clampBandMax(band.max, 7),
+          level,
+          label: String(band.label || bandLabel(level)).trim()
+        };
+      }).filter((band) => {
+        if (seen.has(band.level) || band.min > band.max) return false;
+        seen.add(band.level);
+        return true;
+      }).sort((a, b) => notifyLevelOrder.indexOf(a.level) - notifyLevelOrder.indexOf(b.level));
+    }
+
+    function correctNotifyBands(bands) {
+      const normalized = normalizeBands(bands);
+      let changed = normalized.length !== (Array.isArray(bands) ? bands.length : 0);
+      const corrected = normalized.map((band) => ({ ...band, max: band.level === "critical" ? 99 : Math.min(band.max, 7) }));
+      for (let index = 0; index < corrected.length - 1; index++) {
+        const current = corrected[index];
+        const next = corrected[index + 1];
+        if (current.max >= next.min) {
+          current.max = Math.max(current.min, next.min - 1);
+          changed = true;
+        }
+      }
+      let previousMax = -1;
+      for (const band of corrected) {
+        if (band.min <= previousMax) {
+          band.min = previousMax + 1;
+          changed = true;
+        }
+        if (band.level !== "critical" && band.min > 7) {
+          band.min = 7;
+          changed = true;
+        }
+        if (band.max < band.min) {
+          band.max = band.min;
+          changed = true;
+        }
+        if (band.level === "critical" && band.max !== 99) {
+          band.max = 99;
+          changed = true;
+        }
+        previousMax = band.max;
+      }
+      return { bands: corrected.slice(0, 3), changed };
+    }
+
+    function bandLabel(level) {
+      if (level === "critical") return "高烈度";
+      if (level === "active") return "中等烈度";
+      return "低烈度";
+    }
+
+    function levelText(level) {
+      if (level === "critical") return "critical + call";
+      return level;
+    }
+
+    function bandDesc(level) {
+      if (level === "critical") return "强提醒";
+      if (level === "active") return "主动提醒";
+      return "不打扰";
+    }
+
+    function bandRangeMaxText(max) {
+      return Number(max) > 7 ? "7+" : String(max);
+    }
+
+    function clampBandMax(value, fallback) {
+      const text = String(value ?? "").trim();
+      if (text.includes("+")) return 99;
+      return clampInt(text, 0, 99, fallback);
+    }
+
+    function setNotifyWarning(message = "") {
+      if (!notifyWarning) return;
+      notifyWarning.textContent = message;
+      notifyWarning.classList.toggle("show", Boolean(message));
+    }
+
+    function parseBandInput(value, min, max, allowPlus, fallback) {
+      const text = String(value ?? "").trim();
+      if (!text) return { value: fallback, error: "烈度数值不能为空。" };
+      if (allowPlus && text === "7+") return { value: 99, error: "" };
+      if (!/^\d+$/.test(text)) return { value: fallback, error: "烈度只能输入 0-7 的整数，高烈度上限使用 7+。" };
+      const number = Number(text);
+      if (number < min || number > max) return { value: clampInt(number, min, max, fallback), error: "烈度数值必须在 0 到 7 之间。" };
+      return { value: number, error: "" };
+    }
+
+    function bandOption(level, selected) {
+      return `<button class="band-option level-${level} ${selected ? "active" : ""}" type="button" data-level="${level}">
+        <span class="band-text"><span class="band-main">${bandLabel(level)}</span><span class="band-sub">${bandDesc(level)} · ${levelText(level)}</span></span>
+      </button>`;
+    }
+
+    function renderNotifyBands() {
+      notifyBands = correctNotifyBands(notifyBands).bands;
+      notifyBandsEl.innerHTML = notifyBands.map((band, index) => `
+        <div class="rule-row" data-index="${index}">
+          <div class="range-fields">
+            <input class="band-min" type="number" min="0" max="7" step="1" value="${band.min}" aria-label="起始烈度">
+            <span>到</span>
+            <input class="band-max" type="text" inputmode="numeric" value="${bandRangeMaxText(band.max)}" aria-label="最高烈度" ${band.level === "critical" ? "readonly" : ""}>
+          </div>
+          <div class="band-choice level-${band.level}">
+            <div class="band-text">
+              <span class="band-main">${bandLabel(band.level)}</span>
+              <span class="band-sub">${bandDesc(band.level)} · ${levelText(band.level)}</span>
+            </div>
+            <input class="band-level" type="hidden" value="${band.level}">
+            <div class="band-menu" role="listbox" aria-label="通知级别">
+              ${notifyLevelOrder.map((level) => bandOption(level, band.level === level)).join("")}
+            </div>
+          </div>
+          <button class="level-test simulate" data-kind="${band.level === "critical" ? "large" : band.level === "active" ? "medium" : "small"}" data-label="${bandLabel(band.level)} 测试" type="button">测试</button>
+          <button class="remove-rule" type="button" data-action="remove-rule" aria-label="删除规则">×</button>
+        </div>
+      `).join("");
+      bindSimulationButtons();
+    }
+
+    function collectNotifyBands() {
+      const bands = [];
+      const errors = [];
+      notifyBandsEl.querySelectorAll(".rule-row").forEach((row) => {
+        const level = row.querySelector(".band-level").value;
+        const minInput = row.querySelector(".band-min");
+        const maxInput = row.querySelector(".band-max");
+        const minParsed = parseBandInput(minInput.value, 0, 7, false, 0);
+        const maxParsed = parseBandInput(maxInput.value, 0, 7, level === "critical", level === "critical" ? 99 : 7);
+        if (minParsed.error) errors.push(`${bandLabel(level)}起始烈度：${minParsed.error}`);
+        if (maxParsed.error) errors.push(`${bandLabel(level)}最高烈度：${maxParsed.error}`);
+        bands.push({
+          min: minParsed.value,
+          max: level === "critical" ? 99 : maxParsed.value,
+          level,
+          label: bandLabel(level)
+        });
+      });
+      return { bands, error: errors[0] || "" };
+    }
+
+    function commitNotifyBands(visible = false) {
+      const collected = collectNotifyBands();
+      if (collected.error) {
+        setNotifyWarning(collected.error);
+        return false;
+      }
+      const result = correctNotifyBands(collected.bands);
+      notifyBands = result.bands;
+      setNotifyWarning(visible && result.changed ? "通知级别范围已自动调整，避免烈度区间重叠或重复级别。" : "");
+      renderNotifyBands();
+      return true;
+    }
+
+    function validateNotifyBands(bands) {
+      if (!bands.length) return "请至少保留一条通知级别规则。";
+      if (bands.length > 3) return "通知级别规则最多 3 条。";
+      const levels = new Set();
+      const used = new Set();
+      for (const band of bands) {
+        if (levels.has(band.level)) return "每个通知级别只能添加一条规则。";
+        levels.add(band.level);
+        if (band.min > band.max) return "通知级别规则的起始烈度不能大于最高烈度。";
+        if (band.min < 0 || band.max > 99) return "通知级别规则的烈度范围必须在 0 到 7+ 之间。";
+        if (band.level === "critical" && band.max !== 99) return "高烈度上限必须为 7+。";
+        for (let value = band.min; value <= band.max; value++) {
+          if (used.has(value)) return "通知级别规则的烈度范围不能重叠。";
+          used.add(value);
+        }
+      }
+      return "";
+    }
+
+    function bindSimulationButtons() {
+      document.querySelectorAll(".simulate").forEach((btn) => {
+        btn.onclick = async () => {
+          const kind = btn.dataset.kind || "small";
+          const label = btn.dataset.label || "测试";
+          const key = await normalizeBarkInput(true);
+          if (!key) return show("请先填写 Bark Key。", "error");
+          if (kind === "large" && !confirm("确认发送 critical 测试？这会按高烈度提醒发送到当前 Bark Key。")) return;
+          btn.disabled = true;
+          show("正在发送 " + label + "...", "info");
+          try {
+            const res = await fetch(api + "/api/simulate/" + encodeURIComponent(key) + "?kind=" + encodeURIComponent(kind), { method: "POST" });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "发送失败");
+            show("已发送 " + label + "。如刚修改了位置或通知规则，请先保存订阅后再测试。", "success");
+          } catch (err) {
+            show(err.message || "发送失败，请确认已保存订阅。", "error");
+          } finally {
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    async function updateDraftNameFromCoordinate(lat, lon, fallback) {
+      draftLocationName = fallback || `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
+      draftLocationResolved = false;
+      renderDraftLocation();
+      const name = await resolveLocationName(lat, lon);
+      const currentLat = Number(latInput.value);
+      const currentLon = Number(lonInput.value);
+      if (Math.abs(currentLat - Number(lat)) < 0.0002 && Math.abs(currentLon - Number(lon)) < 0.0002) {
+        draftLocationName = name;
+        draftLocationResolved = true;
+        renderDraftLocation();
+      }
+    }
+
+    map.on("click", (e) => {
+      draftLocationName = "";
+      setPosition(e.latlng.lat, e.latlng.lng);
+      updateDraftNameFromCoordinate(e.latlng.lat, e.latlng.lng, "正在解析地点名称...");
+    });
+    addressSearch.addEventListener("click", searchAddress);
+    addressQuery.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchAddress();
+      }
+    });
+    addressResults.addEventListener("click", (event) => {
+      const button = event.target.closest(".address-result");
+      if (!button) return;
+      const item = (addressResults._items || [])[Number(button.dataset.index)];
+      if (!item) return;
+      setPosition(item.latitude, item.longitude, 13);
+      addressQuery.value = item.name || item.address || addressQuery.value;
+      draftLocationName = item.address || item.name || "";
+      draftLocationResolved = true;
+      renderDraftLocation();
+      hideAddressResults();
+      show("已选择地址。", "success");
+    });
+    addLocation.addEventListener("click", () => addCurrentLocation());
+    locationsList.addEventListener("click", (event) => {
+      const row = event.target.closest(".location-item");
+      if (!row) return;
+      const index = Number(row.dataset.index);
+      const action = event.target.closest("[data-action]")?.dataset.action;
+      if (action === "remove") {
+        const item = selectedLocations[index];
+        const name = item ? (item.name || `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`) : "这个监测地点";
+        if (!confirm(`确定删除监测地点？\n${name}`)) return;
+        selectedLocations.splice(index, 1);
+        showLocationNotice("已删除监测地点。", "success");
+        renderLocations();
+        show("已删除监测地点。", "success");
+        return;
+      }
+      focusLocation(index);
+    });
+    locate.addEventListener("click", () => {
+      if (!navigator.geolocation) return show("当前浏览器不支持定位。", "error");
+      if (selectedLocations.length >= 3) {
+        showLocationNotice("已添加 3 个监测地点，不能继续添加。", "error");
+        return;
+      }
+      locate.disabled = true;
+      show("正在获取定位...", "info");
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          setPosition(lat, lon, 12);
+          draftLocationName = "当前位置";
+          draftLocationResolved = false;
+          renderDraftLocation();
+          showLocationNotice("正在解析地点名称...", "info");
+          show("定位成功，正在解析地点名称。", "success");
+          const name = await resolveLocationName(lat, lon);
+          draftLocationName = name;
+          draftLocationResolved = true;
+          renderDraftLocation();
+          if (selectedLocations.length === 0) {
+            await addCurrentLocation({ name, latitude: lat, longitude: lon }, { skipResolve: true });
+          } else {
+            showLocationNotice("已定位当前地址，可点击“添加当前地点”。", "success");
+          }
+          locate.disabled = false;
+        },
+        () => {
+          show("定位失败，请手动点击地图或输入经纬度。", "error");
+          locate.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 9000 }
+      );
+    });
+
+    barkInput.addEventListener("blur", () => verifyBarkKey(true));
+    barkInput.addEventListener("input", () => {
+      keyVerifySeq++;
+      if (barkInput.value.includes("://")) normalizeBarkInput(true).then(() => verifyBarkKey(true));
+    });
+    barkInput.addEventListener("paste", () => setTimeout(() => normalizeBarkInput(true).then(() => verifyBarkKey(true)), 0));
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      const barkID = await normalizeBarkInput(true);
+      show("正在保存订阅...", "info");
+      const collected = collectNotifyBands();
+      if (collected.error) {
+        submit.disabled = false;
+        setNotifyWarning(collected.error);
+        return show(collected.error, "error");
+      }
+      const correction = correctNotifyBands(collected.bands);
+      notifyBands = correction.bands;
+      if (correction.changed) renderNotifyBands();
+      const bandsError = validateNotifyBands(notifyBands);
+      if (bandsError) {
+        submit.disabled = false;
+        setNotifyWarning(bandsError);
+        return show(bandsError, "error");
+      }
+      setNotifyWarning(correction.changed ? "通知级别范围已自动调整后保存。" : "");
+      if (correction.changed) show("通知级别范围已自动调整后保存。", "info");
+      let locations = normalizeLocationList(selectedLocations);
+      if (!locations.length) {
+        submit.disabled = false;
+        showLocationNotice("请先选择地址并点击“添加当前地点”。", "error");
+        return show("请至少添加一个监测地点。", "error");
+      }
+      const payload = {
+        bark_id: barkID,
+        bark_server: selectedBarkServer || defaultBarkServer,
+        location_name: locations[0].name,
+        latitude: Number(locations[0].latitude),
+        longitude: Number(locations[0].longitude),
+        locations,
+        notify_bands: notifyBands
+      };
+      try {
+        const res = await fetch(api + "/api/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "订阅失败");
+        localStorage.setItem("eew_bark_id", payload.bark_id);
+        selectedLocations = locations;
+        renderLocations();
+        localStorage.setItem("eew_position", JSON.stringify({ lat: payload.latitude, lon: payload.longitude, address: addressQuery.value.trim(), locations: payload.locations, bands: payload.notify_bands }));
+        const manageUrl = json.data && json.data.manage_url ? json.data.manage_url : (api + "/manage/" + encodeURIComponent(payload.bark_id));
+        show(`订阅已生效。<a href="${manageUrl}" style="font-weight:800;color:inherit">打开测试页</a>，可自行模拟测试。`, "success", true);
+        refreshStats();
+      } catch (err) {
+        show(err.message || "网络请求失败。", "error");
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    unsubscribe.addEventListener("click", async () => {
+      const key = await normalizeBarkInput(true);
+      if (!key) return show("请先填写 Bark Key。", "error");
+      if (!confirm("确定取消订阅？")) return;
+      unsubscribe.disabled = true;
+      show("正在取消订阅...", "info");
+      try {
+        const res = await fetch(api + "/api/unsubscribe/" + encodeURIComponent(key), { method: "DELETE" });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "取消失败");
+        localStorage.removeItem("eew_bark_id");
+        show("已取消订阅。", "success");
+        refreshStats();
+      } catch (err) {
+        show(err.message || "网络请求失败。", "error");
+      } finally {
+        unsubscribe.disabled = false;
+      }
+    });
+
+    async function refreshStats() {
+      try {
+        const res = await fetch(api + "/api/stats");
+        const json = await res.json();
+        stats.textContent = json.success ? `${json.data.total_subscriptions} 人订阅` : "状态未知";
+      } catch {
+        stats.textContent = "状态未知";
+      }
+    }
+
+    barkInput.value = localStorage.getItem("eew_bark_id") || "";
+    const saved = JSON.parse(localStorage.getItem("eew_position") || "null");
+    if (saved) {
+      selectedLocations = normalizeLocationList(saved.locations || [{ name: saved.address || "", latitude: saved.lat, longitude: saved.lon }]);
+      renderLocations();
+      const first = selectedLocations[0] || { latitude: saved.lat, longitude: saved.lon };
+      draftLocationName = first.name || "";
+      draftLocationResolved = Boolean(first.name);
+      setPosition(first.latitude, first.longitude, 10);
+      addressQuery.value = saved.address || "";
+      notifyBands = normalizeBands(saved.bands || bandsFromRules(saved.rules));
+    }
+    renderLocations();
+    renderNotifyBands();
+    if (barkInput.value.trim()) {
+      syncSubscriptionFromServer(extractBarkKey(barkInput.value), false);
+    }
+    addRuleBtn.addEventListener("click", () => {
+      const collected = collectNotifyBands();
+      if (collected.error) return setNotifyWarning(collected.error);
+      notifyBands = correctNotifyBands(collected.bands).bands;
+      const used = new Set(notifyBands.map((band) => band.level));
+      const level = notifyLevelOrder.find((item) => !used.has(item));
+      if (!level) return setNotifyWarning("通知级别规则最多 3 条，每个级别只能添加一条。");
+      const preset = defaultNotifyBands().find((band) => band.level === level) || { min: 0, max: 0, level };
+      notifyBands.push({ ...preset, label: bandLabel(level) });
+      notifyBands = correctNotifyBands(notifyBands).bands;
+      setNotifyWarning("");
+      renderNotifyBands();
+    });
+    resetRulesBtn.addEventListener("click", () => {
+      notifyBands = defaultNotifyBands();
+      setNotifyWarning("");
+      renderNotifyBands();
+    });
+    notifyBandsEl.addEventListener("change", () => {
+      commitNotifyBands(true);
+    });
+    notifyBandsEl.addEventListener("input", (event) => {
+      if (!event.target.closest(".band-min, .band-max")) return;
+      const collected = collectNotifyBands();
+      if (collected.error) setNotifyWarning(collected.error);
+      else if (correctNotifyBands(collected.bands).changed) setNotifyWarning("通知级别范围存在冲突，离开输入框后会自动调整。");
+      else setNotifyWarning("");
+    });
+    notifyBandsEl.addEventListener("blur", (event) => {
+      if (!event.target.closest(".band-min, .band-max")) return;
+      commitNotifyBands(true);
+    }, true);
+    notifyBandsEl.addEventListener("click", (event) => {
+      const remove = event.target.closest("[data-action='remove-rule']");
+      if (remove) {
+        const row = remove.closest(".rule-row");
+        const collected = collectNotifyBands();
+        if (collected.error) return setNotifyWarning(collected.error);
+        notifyBands = correctNotifyBands(collected.bands).bands;
+        notifyBands.splice(Number(row.dataset.index), 1);
+        setNotifyWarning("");
+        renderNotifyBands();
+        return;
+      }
+      const option = event.target.closest(".band-option");
+      if (option) {
+        const choice = option.closest(".band-choice");
+        choice.querySelector(".band-level").value = option.dataset.level;
+        commitNotifyBands(true);
+        return;
+      }
+      const choice = event.target.closest(".band-choice");
+      if (choice) {
+        notifyBandsEl.querySelectorAll(".band-choice.open").forEach((node) => {
+          if (node !== choice) node.classList.remove("open");
+        });
+        choice.classList.toggle("open");
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (event.target.closest("#notify-bands")) return;
+      notifyBandsEl.querySelectorAll(".band-choice.open").forEach((node) => node.classList.remove("open"));
+    });
+    tutorialToggle.addEventListener("click", async () => {
+      tutorialWidget.classList.toggle("open");
+      tutorialToggle.textContent = tutorialWidget.classList.contains("open") ? "收起教程" : "订阅教程";
+      if (tutorialWidget.classList.contains("open")) await loadTutorial();
+    });
+    tutorialClose.addEventListener("click", () => {
+      tutorialWidget.classList.remove("open");
+      tutorialToggle.textContent = "订阅教程";
+    });
+    tutorialContent.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-copy]");
+      if (button) {
+        copyText(button.dataset.copy || "", button);
+        return;
+      }
+      const image = event.target.closest(".tutorial-images img");
+      if (image) openImageViewer(image.src, image.alt);
+    });
+    imageViewer.addEventListener("click", (event) => {
+      if (event.target === imageViewer) closeImageViewer();
+    });
+    imageViewerClose.addEventListener("click", closeImageViewer);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && imageViewer.classList.contains("open")) closeImageViewer();
+    });
+    refreshStats();
+  </script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+bark:
+  # Default Bark server used for plain Bark Keys and official Bark URLs.
+  server: "https://api.day.app"
+  # Optional self-hosted Bark server. Set this to your own Bark endpoint, for
+  # example "https://bark.example.com", if you want to accept self-hosted Keys.
+  self_hosted_server: ""
+  # Read-only bbolt database from the self-hosted Bark Server. Used to verify
+  # that a submitted self-hosted Bark Key has already been created in the Bark App.
+  # Leave empty if you only use official Bark, or mount your bark.db and set
+  # this to the container path, for example "/app/bark.db".
+  device_db_path: ""
+  level: "critical" # critical, timeSensitive, active, passive
+  sound: "alarm"
+  volume: 10
+  group: "地震预警"
+  call: true
+
+server:
+  host: "0.0.0.0"
+  port: 30010
+  data_path: "./data/subscriptions.json"
+  # Local cache for historical earthquake records. Latest Wolfx records are merged
+  # into this file, while built-in major historical earthquakes are always available.
+  history_path: "./data/history.json"
+  # Persistent delivery audit logs for real EEW events. Each event writes JSONL
+  # details plus a summary JSON, useful for checking missed or delayed pushes.
+  audit_path: "./data/audit"
+  history_refresh_minutes: 60
+  # Address search proxy. "amap" is preferred for China address/POI search.
+  geocode_provider: "amap" # amap, nominatim
+  amap_key: ""
+  amap_place_url: "https://restapi.amap.com/v3/place/text"
+  amap_geocode_url: "https://restapi.amap.com/v3/geocode/geo"
+  amap_reverse_url: "https://restapi.amap.com/v3/geocode/regeo"
+  # Fallback address search proxy. Default uses OpenStreetMap Nominatim and
+  # returns up to 6 China-biased results.
+  geocode_url: "https://nominatim.openstreetmap.org/search"
+  public_url: "https://eew.example.com"
+  # Optional. Set a long random token to enable POST /api/simulate?token=...
+  simulate_token: ""
+  # Pause new web subscriptions without affecting existing subscribers.
+  subscription_paused: false
+  subscription_paused_message: "由于当前订阅人数较多，且 Bark 官方次数限制，再增加人数会影响预警时间。现决定停止订阅，将在后续恢复，现有已订阅用户不受影响，可正常接收地震预警。"
+
+wolfx:
+  # all_eew receives JMA, Sichuan, CENC, Fujian, Chongqing and compatible EEW messages.
+  websocket_url: "wss://ws-api.wolfx.jp/all_eew"
+  reconnect_min_seconds: 1
+  reconnect_max_seconds: 30
+
+alert:
+  push_updates: true
+  update_min_report_gap: 1
+  ignore_training: true
+  ignore_cancel: true
+  s_wave_km_s: 3.5
+  p_wave_km_s: 6.0
+  stale_origin_seconds: 600
+  dedup_keep_minutes: 120
+  max_distance_km: 1000
+  # Official api.day.app fanout. Keep this conservative because official Bark
+  # rejects excessive concurrent TCP connections and bans abnormal error bursts.
+  fanout_concurrency: 300
+  # Self-hosted Bark fanout. This server has no official Bark rate limit, so it
+  # can run much higher to reduce alert fanout latency.
+  self_hosted_fanout_concurrency: 1000
+  # Stop sending temporarily if Bark returns too many 4xx/5xx responses in a
+  # 5-minute window. Bark bans abnormal IPs at 1000 error responses / 5 minutes.
+  fanout_error_budget: 800
+  # Quarantine a Bark Key for 24 hours after repeated 400/404 responses.
+  key_failure_threshold: 3
+  key_quarantine_minutes: 1440
+  # Optional. Bark opens this URL when the notification is tapped.
+  # Leave empty to open a map at the epicenter.
+  # WeChat mini program share fragments such as "#小程序://..." may only work
+  # inside WeChat and may not be openable by iOS from Bark.
+  click_url: ""
+  # Button shown on the alert detail page.
+  # This URL opens the China Earthquake Networks Center mini program.
+  wechat_url: "https://wxmpurl.cn/n87Wlase6iu"

@@ -1,0 +1,17 @@
+[Unit]
+Description=Wolfx EEW to Bark alert service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/eew-bark
+ExecStart=/opt/eew-bark/eew-bark -config /opt/eew-bark/config.yaml
+Restart=always
+RestartSec=2
+User=eew
+Group=eew
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

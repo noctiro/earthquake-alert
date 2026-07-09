@@ -1,0 +1,14 @@
+services:
+  eew-bark:
+    build: .
+    container_name: eew-bark
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:30010:30010"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      # Optional: mount self-hosted Bark Server bbolt DB for Key verification.
+      # - ./bark.db:/app/bark.db:ro
+    environment:
+      - TZ=Asia/Shanghai
