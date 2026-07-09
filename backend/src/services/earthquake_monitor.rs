@@ -6,8 +6,7 @@ use crate::models::{
 use crate::services::{AlertTiming, BarkNotifier};
 use crate::utils::{distance, geohash, intensity};
 use anyhow::Result;
-use futures::stream::{self, StreamExt};
-use futures_util::StreamExt as FuturesStreamExt;
+use futures_util::{StreamExt, stream};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -125,7 +124,7 @@ impl EarthquakeMonitor {
         let (mut _write, mut read) = ws_stream.split();
 
         // 监听消息
-        while let Some(message) = FuturesStreamExt::next(&mut read).await {
+        while let Some(message) = read.next().await {
             match message {
                 Ok(Message::Text(text)) => {
                     if let Err(e) = self.handle_earthquake_message(&text).await {
