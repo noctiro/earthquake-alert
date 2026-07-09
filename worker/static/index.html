@@ -1,845 +1,762 @@
 <!doctype html>
 <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link
-            rel="icon"
-            type="image/svg+xml"
-            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='0' y='0' width='64' height='64' rx='14' fill='%230071e3'/%3E%3Cpath d='M8 32h8l8-14 12 28 12-20 8 6h8' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
-        />
-        <title>Wolfx 地震预警订阅</title>
-        <!-- Leaflet CSS -->
-        <link
-            rel="stylesheet"
-            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        />
-        <!-- Google Fonts -->
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-            rel="stylesheet"
-        />
-        <style>
-            :root {
-                /* 基础变量 (浅色模式默认) */
-                --primary: #0071e3;
-                --bg-color: #f5f5f7;
-                --card-bg: rgba(255, 255, 255, 0.85);
-                --text-main: #1d1d1f;
-                --text-secondary: #86868b;
-                --border-radius: 18px;
-                --input-bg: #ffffff;
-                --input-border: #d2d2d7;
-                --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                --stats-bg: #ffffff;
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wolfx 地震预警订阅</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230071e3'/%3E%3Cpath d='M7 36h10l7-16 12 28 9-21 6 9h6' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f5f7;
+      --panel: rgba(255, 255, 255, .94);
+      --text: #1d1d1f;
+      --muted: #86868b;
+      --line: #d2d2d7;
+      --primary: #0071e3;
+      --primary-strong: #005bb5;
+      --soft: rgba(118, 118, 128, .12);
+      --ok-bg: #e7f7ed;
+      --ok: #087443;
+      --err-bg: #fde8e7;
+      --err: #b42318;
+      --info-bg: #eaf3ff;
+      --info: #175cd3;
+      --warn-bg: #fff3d6;
+      --warn: #9a5b00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --panel: rgba(28, 28, 30, .94);
+        --text: #f5f5f7;
+        --muted: #86868b;
+        --line: #38383a;
+        --primary: #2997ff;
+        --primary-strong: #0077ed;
+        --soft: rgba(118, 118, 128, .24);
+        --ok-bg: rgba(8, 116, 67, .2);
+        --err-bg: rgba(180, 35, 24, .22);
+        --info-bg: rgba(23, 92, 211, .22);
+        --warn-bg: rgba(154, 91, 0, .22);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(760px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 34px 0 42px;
+    }
+    header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .topline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 7vw, 44px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #17b26a;
+      box-shadow: 0 0 0 4px rgba(23, 178, 106, .15);
+    }
+    .subhead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(0, 113, 227, .08);
+    }
+    .section-title {
+      margin: 0 0 16px;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+    .field { margin-bottom: 18px; }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 760;
+    }
+    input, select {
+      width: 100%;
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 13px;
+      background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    }
+    small {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    #map {
+      height: 315px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--soft);
+      margin-bottom: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%); }
+    }
+    .location-toolbar, .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .locations-list {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    .location-item, .locations-empty {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--soft) 72%, transparent);
+    }
+    .location-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 56px;
+      padding: 9px 10px;
+    }
+    .locations-empty {
+      border-style: dashed;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .location-name {
+      font-weight: 820;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .location-coords {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .remove-location, .remove-rule, .level-test {
+      width: 38px;
+      height: 38px;
+      min-width: 38px;
+      border-radius: 8px;
+      padding: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 900;
+    }
+    .remove-location { color: var(--err); background: var(--err-bg); }
+    .notify-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: visible;
+      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+      margin-bottom: 18px;
+    }
+    .threshold-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--soft) 62%, transparent);
+    }
+    .setting-title { font-weight: 850; line-height: 1.25; }
+    .setting-note { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .notify-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .rule-rows { display: grid; }
+    .rule-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 1fr) minmax(190px, 1fr) 38px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+    }
+    .rule-row:first-child { border-top: 0; }
+    .range-fields {
+      display: grid;
+      grid-template-columns: minmax(50px, 70px) auto minmax(50px, 70px);
+      gap: 7px;
+      align-items: center;
+    }
+    .range-fields span {
+      color: var(--muted);
+      font-weight: 850;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .range-fields input {
+      height: 36px;
+      text-align: center;
+      font-weight: 850;
+      padding: 0 6px;
+      background: var(--panel);
+    }
+    .band-select { height: 38px; font-weight: 820; }
+    .level-passive { color: #344054; background: #eef2f6; }
+    .level-active { color: #175cd3; background: #eff6ff; }
+    .level-critical { color: #b42318; background: #fff1f0; }
+    .notify-warning {
+      display: none;
+      padding: 10px 12px;
+      border-top: 1px solid rgba(0, 113, 227, .16);
+      color: var(--err);
+      background: rgba(0, 113, 227, .07);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.4;
+    }
+    .notify-warning.show { display: block; }
+    button {
+      height: 48px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 760;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--soft);
+    }
+    button.primary { background: var(--primary); color: #fff; }
+    button.primary:hover { background: var(--primary-strong); }
+    button:disabled { opacity: .65; cursor: wait; }
+    .status {
+      display: none;
+      margin: 0 0 16px;
+      padding: 13px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .status.visible { display: block; }
+    .status.success { color: var(--ok); background: var(--ok-bg); }
+    .status.error { color: var(--err); background: var(--err-bg); }
+    .status.info { color: var(--info); background: var(--info-bg); }
+    .status.warning { color: var(--warn); background: var(--warn-bg); }
+    footer { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.6; text-align: center; }
+    a { color: inherit; }
+    @media (max-width: 640px) {
+      main { padding-top: 22px; }
+      .topline { gap: 8px; }
+      h1 { font-size: clamp(24px, 6.4vw, 30px); line-height: 1.12; }
+      .badge { min-height: 32px; padding: 0 10px; font-size: 12px; }
+      .panel { padding: 16px; }
+      .grid, .location-toolbar, .actions, .threshold-row { grid-template-columns: 1fr; }
+      input, select { font-size: 16px; }
+      #map { height: 270px; }
+      .notify-actions { justify-content: stretch; }
+      .notify-actions button { flex: 1 1 0; }
+      .rule-row { grid-template-columns: 1fr 1fr 38px; gap: 6px; padding: 8px 6px; }
+      .range-fields { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr); gap: 2px; }
+      .range-fields input { padding: 0 3px; }
+      .band-select { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline">
+        <h1>Wolfx 预警订阅</h1>
+        <div class="badge"><span class="dot"></span><span id="stats">状态未知</span></div>
+      </div>
+      <p class="subhead">地震预警通过 Bark 推送到当前设备。</p>
+    </header>
 
-                /* 状态颜色 */
-                --status-success-bg: #dcfce7;
-                --status-success-text: #166534;
-                --status-error-bg: #fee2e2;
-                --status-error-text: #991b1b;
-                --status-info-bg: #e0f2fe;
-                --status-info-text: #075985;
+    <section class="panel">
+      <h2 class="section-title">订阅配置</h2>
+      <div id="status" class="status" role="alert" aria-live="polite"></div>
+      <form id="subscribe-form">
+        <div class="field">
+          <label for="bark-id">Bark Key</label>
+          <input id="bark-id" type="text" autocomplete="off" maxlength="64" required placeholder="例如 JP8S9..." />
+        </div>
 
-                /* 标题渐变 */
-                --h1-gradient-start: #1d1d1f;
-                --h1-gradient-end: #434343;
-            }
-
-            /* 暗色模式适配 */
-            @media (prefers-color-scheme: dark) {
-                :root {
-                    --primary: #2997ff; /* 更亮的蓝色以适应深色背景 */
-                    --bg-color: #000000;
-                    --card-bg: rgba(28, 28, 30, 0.85);
-                    --text-main: #f5f5f7;
-                    --text-secondary: #86868b;
-                    --input-bg: #1c1c1e;
-                    --input-border: #38383a;
-                    --stats-bg: #1c1c1e;
-
-                    /* 状态颜色 (半透明背景 + 亮色文字) */
-                    --status-success-bg: rgba(46, 204, 113, 0.2);
-                    --status-success-text: #4ade80;
-                    --status-error-bg: rgba(239, 68, 68, 0.2);
-                    --status-error-text: #f87171;
-                    --status-info-bg: rgba(56, 189, 248, 0.2);
-                    --status-info-text: #38bdf8;
-
-                    /* 标题渐变反转 */
-                    --h1-gradient-start: #ffffff;
-                    --h1-gradient-end: #a1a1a6;
-                }
-            }
-
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                -webkit-font-smoothing: antialiased;
-            }
-
-            body {
-                font-family:
-                    "Inter",
-                    -apple-system,
-                    BlinkMacSystemFont,
-                    "SF Pro Text",
-                    "Helvetica Neue",
-                    sans-serif;
-                background-color: var(--bg-color);
-                color: var(--text-main);
-                overflow-x: hidden;
-                transition:
-                    background-color 0.3s ease,
-                    color 0.3s ease;
-            }
-
-            main {
-                max-width: 680px;
-                margin: 0 auto;
-                padding: 60px 20px;
-            }
-
-            /* 顶部标题栏 */
-            header {
-                text-align: center;
-                margin-bottom: 40px;
-                animation: fadeInDown 0.8s ease-out;
-            }
-
-            h1 {
-                font-size: 40px;
-                font-weight: 700;
-                letter-spacing: -0.02em;
-                margin-bottom: 12px;
-                background: linear-gradient(
-                    180deg,
-                    var(--h1-gradient-start) 0%,
-                    var(--h1-gradient-end) 100%
-                );
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-            }
-
-            header p {
-                font-size: 17px;
-                color: var(--text-secondary);
-                max-width: 400px;
-                margin: 0 auto;
-            }
-
-            .stats {
-                margin-top: 24px;
-                display: inline-flex;
-                align-items: center;
-                padding: 6px 16px;
-                background: var(--stats-bg);
-                border-radius: 20px;
-                font-size: 13px;
-                font-weight: 500;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-                color: var(--text-main);
-                transition: background-color 0.3s ease;
-            }
-
-            #stats-count {
-                color: var(--primary);
-                margin: 0 4px;
-            }
-
-            /* 卡片容器 */
-            .glass-card {
-                background: var(--card-bg);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.1); /* 边框调淡 */
-                border-radius: var(--border-radius);
-                padding: 32px;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04);
-                margin-bottom: 30px;
-                transition: var(--transition);
-            }
-
-            /* 暗色模式下的卡片边框微调 */
-            @media (prefers-color-scheme: dark) {
-                .glass-card {
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-                }
-            }
-
-            h2 {
-                font-size: 20px;
-                font-weight: 600;
-                margin-bottom: 24px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                color: var(--text-main);
-            }
-
-            /* 表单样式 */
-            .field {
-                margin-bottom: 24px;
-            }
-
-            label {
-                display: block;
-                font-size: 13px;
-                font-weight: 600;
-                margin-bottom: 8px;
-                color: var(--text-main);
-                opacity: 0.8;
-            }
-
-            input,
-            select {
-                width: 100%;
-                height: 48px;
-                padding: 0 16px;
-                font-size: 15px;
-                border: 1px solid var(--input-border);
-                border-radius: 12px;
-                background: var(--input-bg);
-                color: var(--text-main);
-                transition: var(--transition);
-                appearance: none;
-            }
-
-            input:focus,
-            select:focus {
-                outline: none;
-                border-color: var(--primary);
-                box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15); /* 微调阴影 */
-            }
-
-            /* 修复 iOS Safari 暗色模式下 input 的默认阴影 */
-            input,
-            select,
-            textarea {
-                background-clip: padding-box;
-            }
-
-            .field-group {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 16px;
-            }
-
-            small {
-                display: block;
-                margin-top: 8px;
-                font-size: 12px;
-                color: var(--text-secondary);
-                line-height: 1.4;
-            }
-
-            /* 地图 */
-            #map-container {
-                position: relative;
-                border-radius: 16px;
-                overflow: hidden;
-                border: 1px solid var(--input-border);
-                margin-bottom: 8px;
-                background-color: #f0f0f0; /* 地图加载前的底色 */
-            }
-
-            #map {
-                height: 320px;
-                width: 100%;
-                z-index: 1;
-            }
-
-            /* 地图暗色模式滤镜：反转颜色但保持色相旋转，使海洋保持蓝色系 */
-            @media (prefers-color-scheme: dark) {
-                .leaflet-tile-pane {
-                    filter: invert(100%) hue-rotate(180deg) brightness(95%)
-                        contrast(90%);
-                }
-                /* 防止地图上的文字/标记也被反转，如果只是简单的底图反转可以保留。
-                   如果觉得 Marker 颜色不对，可以单独处理 Marker，但在 Leaflet DOM 结构中较复杂。
-                   通常上面的滤镜对于浅色底图变深色已经足够好看。 */
-            }
-
-            /* 状态反馈区域 */
-            .status-container {
-                margin-top: 24px;
-                margin-bottom: 16px;
-                min-height: 0;
-            }
-
-            .status-box {
-                padding: 16px;
-                border-radius: 12px;
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                font-size: 14px;
-                line-height: 1.5;
-                font-weight: 500;
-                opacity: 0;
-                transform: translateY(-10px);
-                transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-                display: none;
-            }
-
-            .status-box.visible {
-                display: flex;
-                opacity: 1;
-                transform: translateY(0);
-            }
-
-            .status-icon {
-                flex-shrink: 0;
-                width: 20px;
-                height: 20px;
-                margin-top: 1px;
-            }
-
-            .status-box.success {
-                background-color: var(--status-success-bg);
-                color: var(--status-success-text);
-            }
-
-            .status-box.error {
-                background-color: var(--status-error-bg);
-                color: var(--status-error-text);
-            }
-
-            .status-box.info {
-                background-color: var(--status-info-bg);
-                color: var(--status-info-text);
-            }
-
-            /* 按钮 */
-            .actions {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-            }
-
-            .btn-row {
-                display: grid;
-                grid-template-columns: 2fr 1fr;
-                gap: 12px;
-            }
-
-            button {
-                height: 52px;
-                border-radius: 12px;
-                font-size: 16px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: var(--transition);
-                border: none;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .btn-primary {
-                background: var(--primary);
-                color: #fff;
-            }
-
-            .btn-primary:hover {
-                opacity: 0.9;
-                transform: translateY(-1px);
-                box-shadow: 0 8px 20px rgba(0, 113, 227, 0.3);
-            }
-
-            .btn-secondary {
-                background: rgba(
-                    118,
-                    118,
-                    128,
-                    0.12
-                ); /* 适配深浅通用的灰色半透明 */
-                color: var(--text-main);
-            }
-
-            .btn-secondary:hover {
-                background: rgba(118, 118, 128, 0.24);
-            }
-
-            button:disabled {
-                opacity: 0.7;
-                cursor: wait;
-                transform: none !important;
-                box-shadow: none !important;
-            }
-
-            .spinner {
-                width: 18px;
-                height: 18px;
-                border: 2px solid currentColor;
-                border-bottom-color: transparent;
-                border-radius: 50%;
-                display: inline-block;
-                animation: rotation 1s linear infinite;
-                margin-right: 8px;
-            }
-
-            @keyframes rotation {
-                0% {
-                    transform: rotate(0deg);
-                }
-                100% {
-                    transform: rotate(360deg);
-                }
-            }
-
-            footer {
-                text-align: center;
-                margin-top: 40px;
-                font-size: 12px;
-                color: var(--text-secondary);
-            }
-
-            footer a {
-                color: var(--text-main);
-                text-decoration: none;
-                font-weight: 500;
-            }
-
-            @keyframes fadeInDown {
-                from {
-                    opacity: 0;
-                    transform: translateY(-20px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-
-            @media (max-width: 600px) {
-                main {
-                    padding: 40px 16px;
-                }
-                h1 {
-                    font-size: 32px;
-                }
-                .field-group {
-                    grid-template-columns: 1fr;
-                }
-                .btn-row {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <main>
-            <header>
-                <h1>Wolfx 预警订阅</h1>
-                <p>实时接收 Wolfx 地震预警推送至苹果设备</p>
-                <div class="stats">
-                    已有 <span id="stats-count">...</span> 人订阅
-                </div>
-            </header>
-
-            <div class="glass-card">
-                <h2>
-                    <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path
-                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-                        ></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                    订阅配置
-                </h2>
-
-                <form id="subscribe-form">
-                    <div class="field">
-                        <label>Bark 推送密钥 (Key)</label>
-                        <input
-                            type="text"
-                            id="bark-id"
-                            placeholder="例如: JP8S9..."
-                            required
-                            autocomplete="off"
-                            maxlength="64"
-                        />
-                        <small
-                            >请打开 Bark App，获取 api.day.app 的密钥。</small
-                        >
-                    </div>
-
-                    <div class="field">
-                        <label>监测位置</label>
-                        <div id="map-container">
-                            <div id="map"></div>
-                        </div>
-                        <div class="btn-row" style="grid-template-columns: 1fr">
-                            <button
-                                type="button"
-                                id="get-location-btn"
-                                class="btn-secondary"
-                                style="height: 40px; font-size: 13px"
-                            >
-                                <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    style="margin-right: 8px"
-                                >
-                                    <path
-                                        d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
-                                    ></path>
-                                    <circle cx="12" cy="10" r="3"></circle>
-                                </svg>
-                                定位当前位置
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="field-group">
-                        <div class="field">
-                            <label>纬度</label>
-                            <input
-                                type="number"
-                                id="latitude"
-                                step="0.0001"
-                                min="-90"
-                                max="90"
-                                required
-                                placeholder="35.67"
-                            />
-                        </div>
-                        <div class="field">
-                            <label>经度</label>
-                            <input
-                                type="number"
-                                id="longitude"
-                                step="0.0001"
-                                min="-180"
-                                max="180"
-                                required
-                                placeholder="139.65"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <label>通知触发阈值</label>
-                        <select id="min-intensity">
-                            <option value="0">震度 0 (所有预警)</option>
-                            <option value="1">震度 1 (微有感)</option>
-                            <option value="2">震度 2 (轻微摇晃)</option>
-                            <option value="3" selected>
-                                震度 3 (显著摇晃 - 推荐)
-                            </option>
-                            <option value="4">震度 4 (强烈摇晃)</option>
-                            <option value="5">震度 5 (破坏性)</option>
-                        </select>
-                        <small>仅当所在地预估震度 >= 此值时推送。</small>
-                    </div>
-
-                    <div class="field">
-                        <label>Bark 通知级别</label>
-                        <select id="bark-level">
-                            <option value="passive">Passive (安静推送)</option>
-                            <option value="active">Active (普通提醒)</option>
-                            <option value="critical" selected>
-                                Critical (重要警报)
-                            </option>
-                        </select>
-                        <small>该级别会写入订阅配置，可随时更新。</small>
-                    </div>
-
-                    <!-- 状态反馈区域 (替代 Log) -->
-                    <!-- 增加了 role="alert" 和 aria-live，方便屏幕阅读器 -->
-                    <div class="status-container">
-                        <div
-                            id="status-box"
-                            class="status-box"
-                            role="alert"
-                            aria-live="assertive"
-                        >
-                            <div class="status-icon" id="status-icon"></div>
-                            <span id="status-text"></span>
-                        </div>
-                    </div>
-
-                    <div class="actions">
-                        <div class="btn-row">
-                            <button
-                                type="submit"
-                                class="btn-primary"
-                                id="submit-btn"
-                            >
-                                订阅 / 更新设置
-                            </button>
-                            <button
-                                type="button"
-                                id="unsubscribe-btn"
-                                class="btn-secondary"
-                            >
-                                取消订阅
-                            </button>
-                        </div>
-                    </div>
-                </form>
+        <div class="field">
+          <label>监测地点</label>
+          <div id="map"></div>
+          <div class="grid">
+            <input id="location-name" type="text" maxlength="80" placeholder="地点名称" />
+            <div class="grid">
+              <input id="latitude" type="number" step="0.0001" min="-90" max="90" placeholder="纬度" />
+              <input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="经度" />
             </div>
+          </div>
+        </div>
+        <div class="location-toolbar">
+          <button type="button" id="locate">定位当前位置</button>
+          <button type="button" id="add-location">添加当前地点</button>
+        </div>
+        <div id="locations-list" class="locations-list"></div>
 
-            <footer>
-                <p>
-                    数据驱动:
-                    <a href="https://ws-api.wolfx.jp" target="_blank"
-                        >Wolfx.jp API</a
-                    >
-                    | UI Design: Gemini Premium
-                </p>
-            </footer>
-        </main>
+        <div class="notify-card">
+          <div class="threshold-row">
+            <div>
+              <div class="setting-title">通知级别规则</div>
+              <div class="setting-note">每次保存都会覆盖服务器上的订阅配置。</div>
+            </div>
+            <div class="notify-actions">
+              <button type="button" id="add-rule">添加规则</button>
+              <button type="button" id="reset-rules">重置</button>
+            </div>
+          </div>
+          <div id="notify-bands" class="rule-rows"></div>
+          <div id="notify-warning" class="notify-warning"></div>
+        </div>
 
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script>
-            const form = document.getElementById("subscribe-form");
-            const unsubBtn = document.getElementById("unsubscribe-btn");
-            const locBtn = document.getElementById("get-location-btn");
-            const latInput = document.getElementById("latitude");
-            const lonInput = document.getElementById("longitude");
-            const statsCount = document.getElementById("stats-count");
+        <div class="actions">
+          <button class="primary" id="submit" type="submit">覆盖保存订阅</button>
+          <button id="unsubscribe" type="button">取消订阅</button>
+        </div>
+      </form>
+    </section>
+    <footer>数据源 Wolfx.jp · 本页仅从当前浏览器恢复已填写内容</footer>
+  </main>
 
-            // 状态栏元素
-            const statusBox = document.getElementById("status-box");
-            const statusText = document.getElementById("status-text");
-            const statusIcon = document.getElementById("status-icon");
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const api = window.location.origin;
+    const storageKey = "eew_subscription_draft_v2";
+    const form = document.querySelector("#subscribe-form");
+    const barkInput = document.querySelector("#bark-id");
+    const nameInput = document.querySelector("#location-name");
+    const latInput = document.querySelector("#latitude");
+    const lonInput = document.querySelector("#longitude");
+    const locationsList = document.querySelector("#locations-list");
+    const notifyBandsEl = document.querySelector("#notify-bands");
+    const notifyWarning = document.querySelector("#notify-warning");
+    const statusEl = document.querySelector("#status");
+    const submit = document.querySelector("#submit");
+    const unsubscribe = document.querySelector("#unsubscribe");
+    const locate = document.querySelector("#locate");
+    const addLocation = document.querySelector("#add-location");
+    const stats = document.querySelector("#stats");
+    const notifyLevelOrder = ["passive", "active", "critical"];
+    let selectedLocations = [];
+    let notifyBands = defaultNotifyBands();
+    let marker = null;
 
-            const API = window.location.origin;
+    const map = L.map("map", { zoomControl: false, attributionControl: false }).setView([35, 105], 4);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
 
-            // 图标定义
-            const ICONS = {
-                success: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-                error: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-                info: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-                loading: `<div class="spinner"></div>`,
-            };
+    function show(message, type = "info") {
+      statusEl.textContent = message;
+      statusEl.className = "status visible " + type;
+    }
 
-            // 显示状态函数
-            function showStatus(message, type = "info", isLoading = false) {
-                // 重置类名
-                statusBox.className = "status-box visible";
-                statusBox.classList.add(type);
+    function setNotifyWarning(message = "") {
+      notifyWarning.textContent = message;
+      notifyWarning.classList.toggle("show", Boolean(message));
+    }
 
-                // 设置图标和文本
-                statusIcon.innerHTML = isLoading ? ICONS.loading : ICONS[type];
-                statusText.textContent = message;
+    function validCoordinate(lat, lon) {
+      return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    }
 
-                // 视力障碍优化：如果出错，将焦点移过去
-                if (type === "error") {
-                    statusBox.focus();
-                }
-            }
+    function setPosition(lat, lon, zoom = 10) {
+      lat = Number(lat);
+      lon = Number(lon);
+      if (!validCoordinate(lat, lon)) return;
+      latInput.value = lat.toFixed(4);
+      lonInput.value = lon.toFixed(4);
+      if (marker) marker.setLatLng([lat, lon]);
+      else marker = L.marker([lat, lon]).addTo(map);
+      map.setView([lat, lon], zoom);
+    }
 
-            // 清除状态
-            function clearStatus() {
-                statusBox.className = "status-box";
-                // 稍微延迟清空内容，让动画更自然
-                setTimeout(() => {
-                    statusText.textContent = "";
-                }, 300);
-            }
+    function locationLabel(location) {
+      const name = String(location.name || "").trim();
+      return name || `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}`;
+    }
 
-            // 地图初始化
-            const map = L.map("map", {
-                zoomControl: false,
-                attributionControl: false,
-            }).setView([35.0, 105.0], 4);
+    function normalizeLocations(items) {
+      const seen = new Set();
+      const result = [];
+      for (const item of items || []) {
+        const lat = Number(item.latitude);
+        const lon = Number(item.longitude);
+        if (!validCoordinate(lat, lon)) continue;
+        const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push({ name: String(item.name || "").trim().slice(0, 80), latitude: lat, longitude: lon });
+        if (result.length >= 3) break;
+      }
+      return result;
+    }
 
-            L.tileLayer(
-                "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-                { maxZoom: 19 },
-            ).addTo(map);
+    function renderLocations() {
+      selectedLocations = normalizeLocations(selectedLocations);
+      if (!selectedLocations.length) {
+        locationsList.innerHTML = '<div class="locations-empty">尚未添加监测地点。点击地图、定位，或输入经纬度后添加。</div>';
+        return;
+      }
+      locationsList.innerHTML = selectedLocations.map((item, index) => `
+        <div class="location-item" data-index="${index}">
+          <div>
+            <div class="location-name">${escapeHtml(locationLabel(item))}</div>
+            <div class="location-coords">${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}</div>
+          </div>
+          <button class="remove-location" type="button" data-action="remove" aria-label="删除地点">×</button>
+        </div>
+      `).join("");
+    }
 
-            let marker = null;
+    function addCurrentLocation() {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      if (!validCoordinate(lat, lon)) return show("请输入有效经纬度。", "error");
+      if (selectedLocations.length >= 3) return show("最多添加 3 个监测地点。", "error");
+      selectedLocations = normalizeLocations([...selectedLocations, { name: nameInput.value, latitude: lat, longitude: lon }]);
+      renderLocations();
+      persistDraft();
+      show("已添加监测地点。", "success");
+    }
 
-            function updateMarker(lat, lon, zoom = 10) {
-                if (marker) {
-                    marker.setLatLng([lat, lon]);
-                } else {
-                    marker = L.marker([lat, lon]).addTo(map);
-                }
-                map.setView([lat, lon], zoom);
-            }
+    function defaultNotifyBands() {
+      return [
+        { min: 1, max: 1, level: "passive", label: "低烈度" },
+        { min: 2, max: 2, level: "active", label: "中等烈度" },
+        { min: 3, max: 99, level: "critical", label: "高烈度" },
+      ];
+    }
 
-            map.on("click", (e) => {
-                setPosition(e.latlng.lat, e.latlng.lng);
-            });
+    function levelLabel(level) {
+      return level === "critical" ? "Critical" : level === "active" ? "Active" : "Passive";
+    }
 
-            function setPosition(lat, lon) {
-                const latitude = parseFloat(lat);
-                const longitude = parseFloat(lon);
-                if (isNaN(latitude) || isNaN(longitude)) return;
+    function normalizeBands(bands) {
+      const result = [];
+      const usedLevels = new Set();
+      for (const band of bands || []) {
+        const level = notifyLevelOrder.includes(String(band.level || "").toLowerCase()) ? String(band.level).toLowerCase() : "passive";
+        if (usedLevels.has(level)) continue;
+        usedLevels.add(level);
+        let min = clampInt(band.min, 0, 7, 0);
+        let max = String(band.max).includes("+") ? 99 : clampInt(band.max, 0, 99, level === "critical" ? 99 : min);
+        if (level === "critical" && max < 7) max = 99;
+        if (min > max) [min, max] = [max, min];
+        result.push({ min, max, level, label: String(band.label || levelLabel(level)).slice(0, 32) });
+        if (result.length >= 3) break;
+      }
+      return result.length ? result.sort((a, b) => a.min - b.min) : defaultNotifyBands();
+    }
 
-                latInput.value = latitude.toFixed(4);
-                lonInput.value = longitude.toFixed(4);
-                updateMarker(latitude, longitude);
-            }
+    function clampInt(value, min, max, fallback) {
+      const number = Number.parseInt(value, 10);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.min(max, Math.max(min, number));
+    }
 
-            // 定位功能
-            locBtn.addEventListener("click", () => {
-                if (!navigator.geolocation)
-                    return showStatus("您的浏览器不支持地理位置功能", "error");
+    function validateBands(bands) {
+      if (!bands.length) return "请至少保留一条通知级别规则。";
+      const levels = new Set();
+      const used = new Set();
+      for (const band of bands) {
+        if (!notifyLevelOrder.includes(band.level)) return "通知级别无效。";
+        if (levels.has(band.level)) return "每个通知级别只能添加一条规则。";
+        levels.add(band.level);
+        if (band.min > band.max || band.min < 0 || band.max > 99) return "烈度范围无效。";
+        if (band.level === "critical" && band.max < 7) return "Critical 规则上限必须覆盖 7+。";
+        for (let value = band.min; value <= band.max; value++) {
+          if (used.has(value)) return "烈度范围不能重叠。";
+          used.add(value);
+        }
+      }
+      return "";
+    }
 
-                locBtn.disabled = true;
-                showStatus("正在获取 GPS 信号，请稍候...", "info", true);
+    function renderNotifyBands() {
+      notifyBands = normalizeBands(notifyBands);
+      notifyBandsEl.innerHTML = notifyBands.map((band, index) => `
+        <div class="rule-row" data-index="${index}">
+          <div class="range-fields">
+            <input class="band-min" type="number" min="0" max="7" step="1" value="${band.min}" aria-label="起始烈度">
+            <span>到</span>
+            <input class="band-max" type="text" inputmode="numeric" value="${band.max >= 99 ? "7+" : band.max}" aria-label="最高烈度">
+          </div>
+          <select class="band-select level-${band.level}" aria-label="通知级别">
+            ${notifyLevelOrder.map((level) => `<option value="${level}" ${level === band.level ? "selected" : ""}>${levelLabel(level)}</option>`).join("")}
+          </select>
+          <button class="remove-rule" type="button" data-action="remove-rule" aria-label="删除规则">×</button>
+        </div>
+      `).join("");
+    }
 
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        setPosition(pos.coords.latitude, pos.coords.longitude);
-                        showStatus("定位成功！已更新至当前位置", "success");
-                        locBtn.disabled = false;
-                    },
-                    (err) => {
-                        let msg = "定位失败";
-                        if (err.code === 1) msg = "定位被拒绝，请检查权限设置";
-                        else if (err.code === 2)
-                            msg = "无法获取位置信息 (信号弱)";
-                        else if (err.code === 3) msg = "定位请求超时";
+    function collectBands() {
+      const bands = [];
+      notifyBandsEl.querySelectorAll(".rule-row").forEach((row) => {
+        const level = row.querySelector(".band-select").value;
+        const min = clampInt(row.querySelector(".band-min").value, 0, 7, 0);
+        const maxText = row.querySelector(".band-max").value.trim();
+        const max = maxText === "7+" ? 99 : clampInt(maxText, 0, 99, level === "critical" ? 99 : 7);
+        bands.push({ min, max: level === "critical" && max < 7 ? 99 : max, level, label: levelLabel(level) });
+      });
+      return normalizeBands(bands);
+    }
 
-                        showStatus(msg, "error");
-                        locBtn.disabled = false;
-                    },
-                    { enableHighAccuracy: true, timeout: 8000 },
-                );
-            });
+    function commitBands(showWarning = false) {
+      notifyBands = collectBands();
+      const error = validateBands(notifyBands);
+      setNotifyWarning(error || "");
+      renderNotifyBands();
+      if (showWarning && !error) persistDraft();
+      return !error;
+    }
 
-            // 提交订阅
-            form.addEventListener("submit", async (e) => {
-                e.preventDefault();
-                const btn = document.getElementById("submit-btn");
-                const data = {
-                    bark_id: document.getElementById("bark-id").value.trim(),
-                    latitude: parseFloat(latInput.value),
-                    longitude: parseFloat(lonInput.value),
-                    min_intensity: parseInt(
-                        document.getElementById("min-intensity").value,
-                    ),
-                    bark_level: document.getElementById("bark-level").value,
-                };
+    function persistDraft() {
+      const draft = {
+        bark_id: barkInput.value.trim(),
+        current: { name: nameInput.value.trim(), latitude: Number(latInput.value), longitude: Number(lonInput.value) },
+        locations: selectedLocations,
+        notify_bands: notifyBands,
+      };
+      localStorage.setItem(storageKey, JSON.stringify(draft));
+    }
 
-                btn.disabled = true;
-                btn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;border-color:#fff;border-bottom-color:transparent"></div> 处理中...`;
+    function restoreDraft() {
+      const draft = safeJson(localStorage.getItem(storageKey)) || {};
+      barkInput.value = draft.bark_id || "";
+      selectedLocations = normalizeLocations(draft.locations || []);
+      notifyBands = normalizeBands(draft.notify_bands || defaultNotifyBands());
+      const current = draft.current || selectedLocations[0];
+      if (current) {
+        nameInput.value = current.name || "";
+        setPosition(current.latitude, current.longitude, 10);
+      }
+      renderLocations();
+      renderNotifyBands();
+    }
 
-                // 显示处理状态
-                showStatus("正在同步订阅配置至云端...", "info", true);
+    function safeJson(value) {
+      try { return value ? JSON.parse(value) : null; } catch { return null; }
+    }
 
-                try {
-                    const res = await fetch(`${API}/api/subscribe`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(data),
-                    });
-                    const result = await res.json();
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+    }
 
-                    if (res.ok && result.success) {
-                        showStatus("订阅成功！地震预警已生效。", "success");
-                        localStorage.setItem("bark_id", data.bark_id);
-                        localStorage.setItem(
-                            "last_pos",
-                            JSON.stringify({
-                                lat: data.latitude,
-                                lon: data.longitude,
-                            }),
-                        );
-                        localStorage.setItem("bark_level", data.bark_level);
-                    } else {
-                        showStatus(
-                            result.message || "服务器拒绝了请求",
-                            "error",
-                        );
-                    }
-                } catch (e) {
-                    showStatus("网络连接失败，请检查您的网络", "error");
-                } finally {
-                    btn.disabled = false;
-                    btn.textContent = "订阅 / 同步设置";
-                }
-            });
+    map.on("click", (event) => {
+      setPosition(event.latlng.lat, event.latlng.lng);
+      persistDraft();
+    });
 
-            // 取消订阅
-            unsubBtn.addEventListener("click", async () => {
-                const barkId = document.getElementById("bark-id").value.trim();
-                if (!barkId) {
-                    showStatus("请输入 Bark ID 以进行退订操作", "error");
-                    document.getElementById("bark-id").focus();
-                    return;
-                }
+    locate.addEventListener("click", () => {
+      if (!navigator.geolocation) return show("当前浏览器不支持定位。", "error");
+      locate.disabled = true;
+      show("正在获取定位...", "info");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPosition(pos.coords.latitude, pos.coords.longitude, 12);
+          if (!nameInput.value.trim()) nameInput.value = "当前位置";
+          persistDraft();
+          show("定位成功。", "success");
+          locate.disabled = false;
+        },
+        () => {
+          show("定位失败，请点击地图或输入经纬度。", "error");
+          locate.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 9000 }
+      );
+    });
 
-                if (!confirm("确定要停止推送服务吗？此操作不可逆。")) return;
+    addLocation.addEventListener("click", addCurrentLocation);
 
-                unsubBtn.disabled = true;
-                showStatus("正在从服务器移除您的订阅...", "info", true);
+    locationsList.addEventListener("click", (event) => {
+      const row = event.target.closest(".location-item");
+      if (!row) return;
+      const index = Number(row.dataset.index);
+      if (event.target.closest("[data-action='remove']")) {
+        selectedLocations.splice(index, 1);
+        renderLocations();
+        persistDraft();
+        return show("已删除监测地点。", "success");
+      }
+      const item = selectedLocations[index];
+      if (!item) return;
+      nameInput.value = item.name || "";
+      setPosition(item.latitude, item.longitude, 12);
+      persistDraft();
+    });
 
-                try {
-                    const res = await fetch(
-                        `${API}/api/unsubscribe/${encodeURIComponent(barkId)}`,
-                        { method: "DELETE" },
-                    );
-                    const result = await res.json();
+    [barkInput, nameInput, latInput, lonInput].forEach((input) => input.addEventListener("input", persistDraft));
 
-                    if (res.ok && result.success) {
-                        showStatus(
-                            "已成功取消订阅，您将不再收到通知。",
-                            "success",
-                        );
-                        form.reset();
-                        if (marker) map.removeLayer(marker);
-                        localStorage.removeItem("bark_id");
-                        localStorage.removeItem("bark_level");
-                    } else {
-                        showStatus(result.message || "取消订阅失败", "error");
-                    }
-                } catch {
-                    showStatus("网络请求失败，请稍后重试", "error");
-                } finally {
-                    unsubBtn.disabled = false;
-                }
-            });
+    document.querySelector("#add-rule").addEventListener("click", () => {
+      if (!commitBands()) return;
+      const used = new Set(notifyBands.map((band) => band.level));
+      const level = notifyLevelOrder.find((item) => !used.has(item));
+      if (!level) return setNotifyWarning("通知级别规则最多 3 条。");
+      notifyBands.push({ min: level === "passive" ? 0 : level === "active" ? 2 : 3, max: level === "critical" ? 99 : level === "active" ? 2 : 1, level, label: levelLabel(level) });
+      renderNotifyBands();
+      persistDraft();
+    });
 
-            // 获取统计
-            async function fetchStats() {
-                try {
-                    const res = await fetch(`${API}/api/stats`);
-                    const result = await res.json();
-                    if (result.success)
-                        statsCount.textContent =
-                            result.data.total_subscriptions;
-                } catch {
-                    statsCount.textContent = "0";
-                }
-            }
+    document.querySelector("#reset-rules").addEventListener("click", () => {
+      notifyBands = defaultNotifyBands();
+      setNotifyWarning("");
+      renderNotifyBands();
+      persistDraft();
+    });
 
-            // 初始化加载
-            window.addEventListener("DOMContentLoaded", () => {
-                fetchStats();
-                const savedId = localStorage.getItem("bark_id");
-                if (savedId) document.getElementById("bark-id").value = savedId;
-                const savedLevel = localStorage.getItem("bark_level");
-                if (savedLevel)
-                    document.getElementById("bark-level").value = savedLevel;
+    notifyBandsEl.addEventListener("change", () => commitBands(true));
+    notifyBandsEl.addEventListener("blur", (event) => {
+      if (event.target.closest(".band-min, .band-max")) commitBands(true);
+    }, true);
+    notifyBandsEl.addEventListener("click", (event) => {
+      const remove = event.target.closest("[data-action='remove-rule']");
+      if (!remove) return;
+      notifyBands = collectBands();
+      notifyBands.splice(Number(remove.closest(".rule-row").dataset.index), 1);
+      if (!notifyBands.length) notifyBands = defaultNotifyBands();
+      renderNotifyBands();
+      persistDraft();
+    });
 
-                const savedPos = JSON.parse(localStorage.getItem("last_pos"));
-                if (savedPos) setPosition(savedPos.lat, savedPos.lon);
-            });
-        </script>
-    </body>
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!commitBands()) return show("请修正通知级别规则。", "error");
+      let locations = normalizeLocations(selectedLocations);
+      if (!locations.length) {
+        const lat = Number(latInput.value);
+        const lon = Number(lonInput.value);
+        if (validCoordinate(lat, lon)) locations = normalizeLocations([{ name: nameInput.value, latitude: lat, longitude: lon }]);
+      }
+      if (!locations.length) return show("请至少添加一个监测地点。", "error");
+      const barkID = barkInput.value.trim();
+      if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("Bark Key 只能包含字母和数字。", "error");
+      const payload = {
+        bark_id: barkID,
+        location_name: locations[0].name,
+        latitude: Number(locations[0].latitude),
+        longitude: Number(locations[0].longitude),
+        locations,
+        notify_bands: notifyBands,
+      };
+      submit.disabled = true;
+      show("正在覆盖保存订阅...", "info");
+      try {
+        const res = await fetch(api + "/api/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "保存失败");
+        selectedLocations = locations;
+        persistDraft();
+        renderLocations();
+        show("订阅已覆盖保存。", "success");
+        refreshStats();
+      } catch (error) {
+        show(error.message || "网络请求失败。", "error");
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    unsubscribe.addEventListener("click", async () => {
+      const barkID = barkInput.value.trim();
+      if (!barkID) return show("请先填写 Bark Key。", "error");
+      if (!confirm("确定取消订阅？")) return;
+      unsubscribe.disabled = true;
+      show("正在取消订阅...", "info");
+      try {
+        const res = await fetch(api + "/api/unsubscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bark_id: barkID }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "取消失败");
+        localStorage.removeItem(storageKey);
+        selectedLocations = [];
+        renderLocations();
+        form.reset();
+        if (marker) { map.removeLayer(marker); marker = null; }
+        show("已取消订阅。", "success");
+        refreshStats();
+      } catch (error) {
+        show(error.message || "网络请求失败。", "error");
+      } finally {
+        unsubscribe.disabled = false;
+      }
+    });
+
+    async function refreshStats() {
+      try {
+        const res = await fetch(api + "/api/stats");
+        const json = await res.json();
+        stats.textContent = json.success ? `${json.data.total_subscriptions} 人订阅` : "状态未知";
+      } catch {
+        stats.textContent = "状态未知";
+      }
+    }
+
+    restoreDraft();
+    refreshStats();
+  </script>
+</body>
 </html>

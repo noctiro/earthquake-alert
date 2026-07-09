@@ -1,11 +1,10 @@
 use crate::db::Database;
-use crate::models::{ApiResponse, SubscribeRequest, Subscription, validate_bark_level};
-use crate::utils::{distance, intensity};
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::{IntoResponse, Json},
+use crate::models::{
+    ApiResponse, NotificationBand, SubscribeRequest, Subscription, SubscriptionLocation,
+    UnsubscribeRequest, mask_bark_id, validate_bark_level,
 };
+use crate::utils::distance;
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
 /// 应用状态
@@ -47,48 +46,38 @@ pub async fn subscribe_handler(
         );
     }
 
-    if !distance::validate_coordinates(payload.latitude, payload.longitude) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<SubscribeResponse>::error("无效的经纬度坐标")),
-        );
-    }
-
-    if !intensity::validate_intensity(payload.min_intensity) {
+    let locations = normalize_locations(&payload);
+    if locations.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
             Json(ApiResponse::<SubscribeResponse>::error(
-                "烈度阈值必须在 0-7 之间",
+                "请至少添加一个有效监测地点",
             )),
         );
     }
+    let primary = locations[0].clone();
 
-    let bark_level = payload.bark_level.trim().to_ascii_lowercase();
-    if !validate_bark_level(&bark_level) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<SubscribeResponse>::error(
-                "Bark 通知级别必须是 passive、active 或 critical",
-            )),
-        );
-    }
-
+    let notify_bands = match normalize_notify_bands(&payload) {
+        Ok(bands) => bands,
+        Err(message) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<SubscribeResponse>::error(message)),
+            );
+        }
+    };
     // 创建订阅
-    let subscription = Subscription::new(
-        payload.bark_id.clone(),
-        payload.latitude,
-        payload.longitude,
-        payload.min_intensity,
-        bark_level,
-    );
+    let mut subscription =
+        Subscription::new(payload.bark_id.clone(), primary.latitude, primary.longitude);
+    subscription.bark_server = payload.bark_server.trim().trim_end_matches('/').to_string();
+    subscription.location_name = primary.name;
+    subscription.locations = locations;
+    subscription.notify_bands = notify_bands;
 
     // 打印订阅信息
     tracing::info!(
-        "收到订阅请求 - Bark ID: {}, 位置: ({:.4}, {:.4}), 最小震度: {}",
-        subscription.bark_id,
-        subscription.latitude,
-        subscription.longitude,
-        subscription.min_intensity
+        "收到订阅请求 - Bark ID: {}",
+        mask_bark_id(&subscription.bark_id)
     );
 
     // 保存到数据库
@@ -96,9 +85,8 @@ pub async fn subscribe_handler(
     match store.upsert_subscription(subscription.clone()) {
         Ok(_) => {
             tracing::info!(
-                "订阅成功 - Bark ID: {}, GeoHash: {}",
-                subscription.bark_id,
-                crate::utils::geohash::encode(subscription.latitude, subscription.longitude)
+                "订阅成功 - Bark ID: {}",
+                mask_bark_id(&subscription.bark_id)
             );
             (
                 StatusCode::OK,
@@ -111,7 +99,7 @@ pub async fn subscribe_handler(
         Err(e) => {
             tracing::error!(
                 "订阅失败 - Bark ID: {}, 错误: {:?}",
-                subscription.bark_id,
+                mask_bark_id(&subscription.bark_id),
                 e
             );
             (
@@ -125,11 +113,12 @@ pub async fn subscribe_handler(
     }
 }
 
-/// 取消订阅处理器（路径参数版本）
-pub async fn unsubscribe_by_path_handler(
+/// 取消订阅处理器
+pub async fn unsubscribe_handler(
     State(state): State<AppState>,
-    Path(bark_id): Path<String>,
+    Json(payload): Json<UnsubscribeRequest>,
 ) -> impl IntoResponse {
+    let bark_id = payload.bark_id.trim().to_string();
     // 验证输入
     if bark_id.trim().is_empty() {
         return (
@@ -139,39 +128,38 @@ pub async fn unsubscribe_by_path_handler(
     }
 
     // Bark ID 长度限制，防止过长数据
-    if bark_id.len() > 256 {
+    if bark_id.len() > 64 {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<()>::error("Bark ID 过长（最大256字符）")),
+            Json(ApiResponse::<()>::error("Bark ID 过长（最大64字符）")),
         );
     }
 
-    // 验证 Bark ID 只包含安全字符（字母、数字、下划线、连字符）
-    if !bark_id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-    {
+    // 验证 Bark ID 只包含安全字符（字母、数字）
+    if !bark_id.chars().all(|c| c.is_alphanumeric()) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::<()>::error(
-                "Bark ID 只能包含字母、数字、下划线和连字符",
-            )),
+            Json(ApiResponse::<()>::error("Bark ID 只能包含字母、数字")),
         );
     }
 
-    tracing::info!("收到取消订阅请求（路径参数）- Bark ID: {}", bark_id);
+    tracing::info!("收到取消订阅请求 - Bark ID: {}", mask_bark_id(&bark_id));
 
     let store = state.db.subscriptions();
     match store.delete_subscription(&bark_id) {
         Ok(_) => {
-            tracing::info!("取消订阅成功 - Bark ID: {}", bark_id);
+            tracing::info!("取消订阅成功 - Bark ID: {}", mask_bark_id(&bark_id));
             (
                 StatusCode::OK,
                 Json(ApiResponse::<()>::success("已取消订阅", None)),
             )
         }
         Err(e) => {
-            tracing::error!("取消订阅失败 - Bark ID: {}, 错误: {:?}", bark_id, e);
+            tracing::error!(
+                "取消订阅失败 - Bark ID: {}, 错误: {:?}",
+                mask_bark_id(&bark_id),
+                e
+            );
             (
                 StatusCode::NOT_FOUND,
                 Json(ApiResponse::<()>::error(format!("取消订阅失败: {}", e))),
@@ -183,25 +171,66 @@ pub async fn unsubscribe_by_path_handler(
 /// 订阅成功响应
 #[derive(Serialize)]
 pub struct SubscribeResponse {
-    pub bark_id: String,
-    pub latitude: f64,
-    pub longitude: f64,
-    pub min_intensity: u8,
-    pub bark_level: String,
-    pub created_at: i64,
+    pub saved: bool,
 }
 
 impl From<Subscription> for SubscribeResponse {
-    fn from(sub: Subscription) -> Self {
-        Self {
-            bark_id: sub.bark_id,
-            latitude: sub.latitude,
-            longitude: sub.longitude,
-            min_intensity: sub.min_intensity,
-            bark_level: sub.bark_level,
-            created_at: sub.created_at,
+    fn from(_sub: Subscription) -> Self {
+        Self { saved: true }
+    }
+}
+
+fn normalize_locations(payload: &SubscribeRequest) -> Vec<SubscriptionLocation> {
+    let mut locations = if payload.locations.is_empty() {
+        vec![SubscriptionLocation {
+            name: payload.location_name.trim().to_string(),
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+        }]
+    } else {
+        payload.locations.clone()
+    };
+    locations.retain(|item| distance::validate_coordinates(item.latitude, item.longitude));
+    for location in &mut locations {
+        location.name = location.name.trim().chars().take(80).collect();
+    }
+    locations.truncate(3);
+    locations
+}
+
+fn normalize_notify_bands(payload: &SubscribeRequest) -> Result<Vec<NotificationBand>, String> {
+    if payload.notify_bands.is_empty() {
+        return Err("请至少添加一条通知级别规则".to_string());
+    }
+    if payload.notify_bands.len() > 3 {
+        return Err("通知级别规则最多 3 条".to_string());
+    }
+    let mut bands = payload.notify_bands.clone();
+    bands.sort_by_key(|band| band.min);
+    let mut levels = std::collections::HashSet::new();
+    let mut used = std::collections::HashSet::new();
+    for band in &mut bands {
+        band.level = band.level.trim().to_ascii_lowercase();
+        if !validate_bark_level(&band.level) {
+            return Err("通知级别必须是 passive、active 或 critical".to_string());
+        }
+        if !levels.insert(band.level.clone()) {
+            return Err("每个通知级别只能添加一条规则".to_string());
+        }
+        if band.min > band.max || band.min > 99 || band.max > 99 {
+            return Err("通知级别烈度范围无效".to_string());
+        }
+        if band.level == "critical" && band.max < 7 {
+            band.max = 99;
+        }
+        band.label = band.label.trim().chars().take(32).collect();
+        for value in band.min..=band.max {
+            if !used.insert(value) {
+                return Err("通知级别烈度范围不能重叠".to_string());
+            }
         }
     }
+    Ok(bands)
 }
 
 #[derive(Serialize)]

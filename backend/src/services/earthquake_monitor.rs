@@ -1,6 +1,8 @@
 use crate::config::Config;
 use crate::db::Database;
-use crate::models::{CommonEarthquakeInfo, EarthquakeData, WebSocketMessage};
+use crate::models::{
+    CommonEarthquakeInfo, EarthquakeData, Subscription, WebSocketMessage, mask_bark_id,
+};
 use crate::services::{AlertTiming, BarkNotifier, BarkPushConfig};
 use crate::utils::{distance, geohash, intensity};
 use anyhow::Result;
@@ -46,7 +48,7 @@ pub struct EarthquakeMonitor {
 }
 
 impl EarthquakeMonitor {
-    pub fn new(db: Database, config: Config) -> Self {
+    pub fn new(db: Database, config: Config) -> Result<Self> {
         let subscription_store = db.subscriptions();
         let push_config = BarkPushConfig {
             sound: config.bark_sound.clone(),
@@ -59,7 +61,7 @@ impl EarthquakeMonitor {
             config.http_pool_size,
             subscription_store,
             push_config,
-        );
+        )?;
         let max_concurrent = config.max_concurrent_notifications.max(1);
         let semaphore = Arc::new(Semaphore::new(max_concurrent));
         let monitor_config = MonitorConfig {
@@ -96,14 +98,14 @@ impl EarthquakeMonitor {
             monitor_config.websocket_url
         );
 
-        Self {
+        Ok(Self {
             db,
             bark_notifier,
             max_concurrent,
             semaphore,
             config: monitor_config,
             seen_events: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 
     /// 启动监控（会自动重连）
@@ -236,11 +238,7 @@ impl EarthquakeMonitor {
         let center_geohash = geohash::encode(earthquake.latitude, earthquake.longitude);
         let neighbor_geohashes = geohash::get_neighbors(&center_geohash);
 
-        tracing::info!(
-            "震央 GeoHash: {}, 检查 {} 个格子",
-            center_geohash,
-            neighbor_geohashes.len()
-        );
+        tracing::info!("检查 {} 个 GeoHash 格子", neighbor_geohashes.len());
 
         // 2. 获取相关格子内的所有订阅
         let store = self.db.subscriptions();
@@ -259,43 +257,10 @@ impl EarthquakeMonitor {
         let mut notification_tasks = Vec::with_capacity(total_candidates);
 
         for subscription in subscriptions {
-            // 计算精确距离
-            let dist = distance::vincenty_distance(
-                earthquake.latitude,
-                earthquake.longitude,
-                subscription.latitude,
-                subscription.longitude,
-            )
-            .unwrap_or(0.0);
-
-            if self.config.max_distance_km > 0.0 && dist > self.config.max_distance_km {
-                continue;
-            }
-
-            let hypocentral_km = (dist.powi(2) + earthquake.depth.max(0.0).powi(2)).sqrt();
-
-            // 估算用户所在位置的震度
-            let estimated_intensity =
-                intensity::estimate_intensity(earthquake.magnitude, hypocentral_km);
-            let timing = AlertTiming {
-                distance_km: dist,
-                hypocentral_km,
-                estimated_intensity,
-                seconds_to_p: seconds_until_arrival(
-                    earthquake,
-                    hypocentral_km,
-                    self.config.p_wave_km_s,
-                ),
-                seconds_to_s: seconds_until_arrival(
-                    earthquake,
-                    hypocentral_km,
-                    self.config.s_wave_km_s,
-                ),
-            };
-
-            // 只有当预估震度 >= 用户设定的最小震度时才加入推送队列
-            if estimated_intensity >= subscription.min_intensity {
-                notification_tasks.push((subscription, timing));
+            if let Some((selected, level, timing)) =
+                self.evaluate_subscription(&subscription, earthquake)
+            {
+                notification_tasks.push((selected, level, timing));
             }
         }
 
@@ -317,32 +282,39 @@ impl EarthquakeMonitor {
         let earthquake = earthquake.clone();
 
         let results = stream::iter(notification_tasks)
-            .map(|(subscription, timing)| {
+            .map(|(subscription, level, timing)| {
                 let bark_notifier = bark_notifier.clone();
                 let semaphore = semaphore.clone();
                 let earthquake = earthquake.clone();
 
                 async move {
-                    // 获取信号量许可（限流）
-                    let _permit: OwnedSemaphorePermit = semaphore.acquire_owned().await.unwrap();
-
                     let bark_id = subscription.bark_id.clone();
+                    // 获取信号量许可（限流）
+                    let permit = semaphore.acquire_owned().await;
+                    let permit_guard: OwnedSemaphorePermit = match permit {
+                        Ok(permit) => permit,
+                        Err(error) => {
+                            tracing::error!("推送并发控制已关闭: {:?}", error);
+                            return (bark_id, false, None);
+                        }
+                    };
+                    let _permit_guard = permit_guard;
 
                     tracing::debug!(
-                        "推送给 {}: 距离 {:.1}km, 预估震度 {} >= 阈值 {}",
-                        bark_id,
+                        "推送给 {}: 距离 {:.1}km, 预估震度 {}, 通知级别 {}",
+                        mask_bark_id(&bark_id),
                         timing.distance_km,
                         timing.estimated_intensity,
-                        subscription.min_intensity
+                        level
                     );
 
                     match bark_notifier
-                        .send_earthquake_alert(&subscription, &earthquake, &timing)
+                        .send_earthquake_alert(&subscription, &level, &earthquake, &timing)
                         .await
                     {
                         Ok(_) => (bark_id, true, None),
                         Err(e) => {
-                            tracing::error!("推送失败 ({}): {:?}", bark_id, e);
+                            tracing::error!("推送失败 ({}): {:?}", mask_bark_id(&bark_id), e);
                             (bark_id, false, Some(e))
                         }
                     }
@@ -383,20 +355,25 @@ impl EarthquakeMonitor {
             tracing::info!("跳过取消事件: {}", earthquake_key(earthquake));
             return true;
         }
-        if self.config.stale_origin_seconds > 0 {
-            if let Some(age_seconds) = origin_age_seconds(earthquake) {
-                if age_seconds > self.config.stale_origin_seconds {
-                    tracing::info!(
-                        "跳过过期事件: {} age={}s",
-                        earthquake_key(earthquake),
-                        age_seconds
-                    );
-                    return true;
-                }
-            }
+        if self.config.stale_origin_seconds > 0
+            && let Some(age_seconds) = origin_age_seconds(earthquake)
+            && age_seconds > self.config.stale_origin_seconds
+        {
+            tracing::info!(
+                "跳过过期事件: {} age={}s",
+                earthquake_key(earthquake),
+                age_seconds
+            );
+            return true;
         }
 
-        let mut seen = self.seen_events.lock().expect("seen event lock poisoned");
+        let mut seen = match self.seen_events.lock() {
+            Ok(seen) => seen,
+            Err(error) => {
+                tracing::error!("事件去重锁已损坏: {:?}", error);
+                return true;
+            }
+        };
         let now = Instant::now();
         seen.retain(|_, value| now.duration_since(value.at) <= self.config.dedup_keep);
         let key = earthquake_key(earthquake);
@@ -421,6 +398,56 @@ impl EarthquakeMonitor {
             },
         );
         false
+    }
+
+    fn evaluate_subscription(
+        &self,
+        subscription: &Subscription,
+        earthquake: &CommonEarthquakeInfo,
+    ) -> Option<(Subscription, String, AlertTiming)> {
+        let mut best: Option<(Subscription, String, AlertTiming)> = None;
+        for location in subscription.normalized_locations() {
+            let dist = distance::vincenty_distance(
+                earthquake.latitude,
+                earthquake.longitude,
+                location.latitude,
+                location.longitude,
+            )?;
+            if self.config.max_distance_km > 0.0 && dist > self.config.max_distance_km {
+                continue;
+            }
+            let hypocentral_km = (dist.powi(2) + earthquake.depth.max(0.0).powi(2)).sqrt();
+            let estimated_intensity =
+                intensity::estimate_intensity(earthquake.magnitude, hypocentral_km);
+            let level = subscription.level_for_intensity(estimated_intensity)?;
+            let timing = AlertTiming {
+                distance_km: dist,
+                hypocentral_km,
+                estimated_intensity,
+                seconds_to_p: seconds_until_arrival(
+                    earthquake,
+                    hypocentral_km,
+                    self.config.p_wave_km_s,
+                ),
+                seconds_to_s: seconds_until_arrival(
+                    earthquake,
+                    hypocentral_km,
+                    self.config.s_wave_km_s,
+                ),
+            };
+            let mut selected = subscription.clone();
+            selected.location_name = location.name;
+            selected.latitude = location.latitude;
+            selected.longitude = location.longitude;
+            let replace = best
+                .as_ref()
+                .map(|(_, _, current)| timing.distance_km < current.distance_km)
+                .unwrap_or(true);
+            if replace {
+                best = Some((selected, level, timing));
+            }
+        }
+        best
     }
 }
 
@@ -513,11 +540,12 @@ mod tests {
 
     #[test]
     fn parses_space_slash_and_timestamps_with_timezone_offsets() {
-        let beijing = parse_datetime_epoch_seconds("2026-07-07 09:30:00", 8 * 3600).unwrap();
-        let slash = parse_datetime_epoch_seconds("2026/07/07 09:30:00", 8 * 3600).unwrap();
-        let jst = parse_datetime_epoch_seconds("2026-07-07T10:30:00", 9 * 3600).unwrap();
+        let beijing = parse_datetime_epoch_seconds("2026-07-07 09:30:00", 8 * 3600);
+        let slash = parse_datetime_epoch_seconds("2026/07/07 09:30:00", 8 * 3600);
+        let jst = parse_datetime_epoch_seconds("2026-07-07T10:30:00", 9 * 3600);
 
         assert_eq!(beijing, slash);
         assert_eq!(beijing, jst);
+        assert!(beijing.is_some());
     }
 }

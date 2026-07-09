@@ -21,6 +21,43 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2.1"
 
+[lints.rust]
+bare_trait_objects = "deny"
+future_incompatible = { level = "deny", priority = -1 }
+let_underscore_drop = "deny"
+non_ascii_idents = "deny"
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+unfulfilled_lint_expectations = "deny"
+unused_must_use = "deny"
+warnings = "deny"
+
+[lints.clippy]
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+dbg_macro = "deny"
+expect_used = "deny"
+exit = "deny"
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+let_underscore_must_use = "deny"
+let_underscore_untyped = "deny"
+let_unit_value = "deny"
+map_err_ignore = "deny"
+mem_forget = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+redundant_clone = "deny"
+todo = "deny"
+undocumented_unsafe_blocks = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unused_result_ok = "deny"
+unwrap_in_result = "deny"
+unwrap_used = "deny"
+
 [profile.release]
 opt-level = 3
 lto = "fat"

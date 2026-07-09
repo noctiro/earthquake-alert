@@ -1,5 +1,5 @@
 use crate::db::SubscriptionStore;
-use crate::models::{CommonEarthquakeInfo, Subscription};
+use crate::models::{CommonEarthquakeInfo, Subscription, mask_bark_id};
 use anyhow::Result;
 use std::time::Duration;
 use urlencoding::encode;
@@ -37,7 +37,7 @@ impl BarkNotifier {
         pool_size: usize,
         subscription_store: SubscriptionStore,
         push_config: BarkPushConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let client = reqwest::Client::builder()
             .user_agent("EarthquakeAlert/1.0")
             .timeout(Duration::from_secs(3))
@@ -48,22 +48,22 @@ impl BarkNotifier {
             .http2_adaptive_window(true)
             .http2_keep_alive_interval(Duration::from_secs(30))
             .http2_keep_alive_timeout(Duration::from_secs(10))
-            .build()
-            .unwrap();
+            .build()?;
 
         tracing::info!("初始化 Bark 通知器，连接池大小: {}", pool_size);
-        Self {
+        Ok(Self {
             api_url: api_url.trim_end_matches('/').to_string(),
             client,
             subscription_store,
             push_config,
-        }
+        })
     }
 
     /// 发送地震预警通知
     pub async fn send_earthquake_alert(
         &self,
         subscription: &Subscription,
+        level: &str,
         earthquake: &CommonEarthquakeInfo,
         timing: &AlertTiming,
     ) -> Result<()> {
@@ -135,14 +135,8 @@ impl BarkNotifier {
         ]);
         let body = lines.join("\n");
 
-        self.send_notification(
-            &subscription.bark_id,
-            subscription.bark_level.trim(),
-            &title,
-            &subtitle,
-            &body,
-        )
-        .await
+        self.send_notification(&subscription.bark_id, level, &title, &subtitle, &body)
+            .await
     }
 
     /// 发送 Bark 通知（支持重试）
@@ -165,20 +159,13 @@ impl BarkNotifier {
         if self.push_config.volume > 0 && level != "passive" {
             params.push(("volume", volume.as_str()));
         }
-        let call = if self.push_config.call {
-            Some("1")
-        } else {
-            None
-        };
-        if let Some(call) = call {
-            if level != "passive" {
-                params.push(("call", call));
-            }
+        if self.push_config.call && level != "passive" {
+            params.push(("call", "1"));
         }
-        if let Some(sound) = &self.push_config.sound {
-            if level != "passive" {
-                params.push(("sound", sound.as_str()));
-            }
+        if let Some(sound) = &self.push_config.sound
+            && level != "passive"
+        {
+            params.push(("sound", sound.as_str()));
         }
 
         let query = params
@@ -207,7 +194,7 @@ impl BarkNotifier {
                     let status = response.status();
 
                     if status.is_success() {
-                        tracing::debug!("Bark 推送成功: {}", bark_id);
+                        tracing::debug!("Bark 推送成功: {}", mask_bark_id(bark_id));
                         return Ok(());
                     } else {
                         let status_code = status.as_u16();
@@ -219,14 +206,21 @@ impl BarkNotifier {
                                 "Bark 推送失败 (HTTP {}): {} - 删除该 bark_id: {}",
                                 status_code,
                                 error_text,
-                                bark_id
+                                mask_bark_id(bark_id)
                             );
 
                             // 删除该订阅
                             if let Err(e) = self.subscription_store.delete_subscription(bark_id) {
-                                tracing::error!("删除订阅失败 ({}): {:?}", bark_id, e);
+                                tracing::error!(
+                                    "删除订阅失败 ({}): {:?}",
+                                    mask_bark_id(bark_id),
+                                    e
+                                );
                             } else {
-                                tracing::info!("已自动删除无效的 bark_id: {}", bark_id);
+                                tracing::info!(
+                                    "已自动删除无效的 bark_id: {}",
+                                    mask_bark_id(bark_id)
+                                );
                             }
 
                             return Err(anyhow::anyhow!(

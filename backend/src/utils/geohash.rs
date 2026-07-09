@@ -1,4 +1,4 @@
-/// GeoHash 编码和邻居计算工具
+//! GeoHash 编码和邻居计算工具
 
 const BASE32: &[u8] = b"0123456789bcdefghjkmnpqrstuvwxyz";
 const PRECISION: usize = 4; // ~20km x 20km
@@ -140,7 +140,7 @@ fn neighbor(geohash: &str, direction: Direction) -> Option<String> {
 
     let last_char = geohash.chars().last()?;
     let parent = &geohash[..geohash.len() - 1];
-    let type_idx = (geohash.len() % 2) as usize;
+    let type_idx = geohash.len() % 2;
 
     let mut base = parent.to_string();
 
@@ -165,7 +165,6 @@ mod tests {
         // 东京塔坐标
         let hash = encode(35.6586, 139.7454);
         assert_eq!(hash.len(), 4);
-        println!("东京塔 GeoHash: {}", hash);
     }
 
     #[test]
@@ -204,8 +203,6 @@ mod tests {
         assert!(hash5.starts_with(&hash1));
         assert!(hash5.starts_with(&hash2));
         assert!(hash5.starts_with(&hash3));
-
-        println!("精度测试: {} -> {} -> {} -> {}", hash1, hash2, hash3, hash5);
     }
 
     #[test]
@@ -215,27 +212,22 @@ mod tests {
         // 赤道和本初子午线交点
         let origin = encode_with_precision(0.0, 0.0, 4);
         assert_eq!(origin.len(), 4);
-        println!("赤道本初子午线: {}", origin);
 
         // 北极附近（不能是正好90度，因为这是边界）
         let north_pole = encode_with_precision(89.9, 0.0, 4);
         assert_eq!(north_pole.len(), 4);
-        println!("北极附近: {}", north_pole);
 
         // 南极附近
         let south_pole = encode_with_precision(-89.9, 0.0, 4);
         assert_eq!(south_pole.len(), 4);
-        println!("南极附近: {}", south_pole);
 
         // 日界线东侧
         let date_line_east = encode_with_precision(0.0, 179.9, 4);
         assert_eq!(date_line_east.len(), 4);
-        println!("日界线东侧: {}", date_line_east);
 
         // 日界线西侧
         let date_line_west = encode_with_precision(0.0, -179.9, 4);
         assert_eq!(date_line_west.len(), 4);
-        println!("日界线西侧: {}", date_line_west);
     }
 
     #[test]
@@ -272,9 +264,6 @@ mod tests {
         let hash = "wecn";
         let neighbors = get_neighbors(hash);
 
-        println!("中心: {}", hash);
-        println!("所有邻居 (包括自己): {:?}", neighbors);
-
         // 验证邻居数量
         assert_eq!(neighbors.len(), 9);
 
@@ -298,16 +287,10 @@ mod tests {
         let east = neighbor(hash, Direction::East);
         let west = neighbor(hash, Direction::West);
 
-        assert!(north.is_some(), "北邻居应该存在");
-        assert!(south.is_some(), "南邻居应该存在");
-        assert!(east.is_some(), "东邻居应该存在");
-        assert!(west.is_some(), "西邻居应该存在");
-
-        // 所有邻居都应该与原始哈希不同
-        assert_ne!(north.unwrap(), hash);
-        assert_ne!(south.unwrap(), hash);
-        assert_ne!(east.unwrap(), hash);
-        assert_ne!(west.unwrap(), hash);
+        assert!(north.as_deref().is_some_and(|value| value != hash));
+        assert!(south.as_deref().is_some_and(|value| value != hash));
+        assert!(east.as_deref().is_some_and(|value| value != hash));
+        assert!(west.as_deref().is_some_and(|value| value != hash));
     }
 
     #[test]
@@ -316,16 +299,16 @@ mod tests {
         // 如果 B 是 A 的北邻居，那么 A 应该是 B 的南邻居
         let hash = "wecn";
 
-        if let Some(north) = neighbor(hash, Direction::North) {
-            if let Some(south_of_north) = neighbor(&north, Direction::South) {
-                assert_eq!(south_of_north, hash, "北邻居的南邻居应该是原点");
-            }
+        if let Some(north) = neighbor(hash, Direction::North)
+            && let Some(south_of_north) = neighbor(&north, Direction::South)
+        {
+            assert_eq!(south_of_north, hash, "北邻居的南邻居应该是原点");
         }
 
-        if let Some(east) = neighbor(hash, Direction::East) {
-            if let Some(west_of_east) = neighbor(&east, Direction::West) {
-                assert_eq!(west_of_east, hash, "东邻居的西邻居应该是原点");
-            }
+        if let Some(east) = neighbor(hash, Direction::East)
+            && let Some(west_of_east) = neighbor(&east, Direction::West)
+        {
+            assert_eq!(west_of_east, hash, "东邻居的西邻居应该是原点");
         }
     }
 
@@ -346,12 +329,11 @@ mod tests {
             let neighbors = get_neighbors(hash);
             // 即使在边界，也应该能计算出邻居（可能少于9个，但至少应该有中心点）
             assert!(
-                neighbors.len() >= 1,
+                !neighbors.is_empty(),
                 "GeoHash {} 应该至少有1个元素（自己）",
                 hash
             );
             assert!(neighbors.len() <= 9, "GeoHash {} 不应该超过9个邻居", hash);
-            println!("边界测试 {} -> {} 个邻居", hash, neighbors.len());
         }
     }
 
@@ -389,13 +371,11 @@ mod tests {
         let hash2 = encode(base_lat + 0.0001, base_lon);
         let hash3 = encode(base_lat, base_lon + 0.0001);
 
-        println!("基准点: {}", hash1);
-        println!("北偏移: {}", hash2);
-        println!("东偏移: {}", hash3);
-
         // 在精度4的情况下，这么小的偏移应该产生相同或相邻的哈希
         let neighbors1 = get_neighbors(&hash1);
         assert!(neighbors1.contains(&hash1));
+        assert!(neighbors1.contains(&hash2) || hash1 == hash2);
+        assert!(neighbors1.contains(&hash3) || hash1 == hash3);
     }
 
     #[test]
@@ -438,14 +418,8 @@ mod tests {
         let hash1_p3 = encode_with_precision(lat, lon, 3);
         let hash2_p3 = encode_with_precision(lat + 1.0, lon, 3);
 
-        let hash1_p6 = encode_with_precision(lat, lon, 6);
-        let hash2_p6 = encode_with_precision(lat + 0.001, lon, 6);
-
-        // 精度3可能无法区分1度的差异，但精度6应该能区分0.001度
+        // 精度3应该能区分 1 度量级的差异。
         assert_ne!(hash1_p3, hash2_p3, "精度3应该能区分1度差异");
-
-        println!("精度3: {} vs {}", hash1_p3, hash2_p3);
-        println!("精度6: {} vs {}", hash1_p6, hash2_p6);
     }
 
     #[test]
@@ -453,22 +427,18 @@ mod tests {
         // 纽约自由女神像 (40.6892, -74.0445)
         let ny = encode_with_precision(40.6892, -74.0445, 9);
         assert_eq!(ny, "dr5r7p4ry");
-        println!("纽约: {}", ny);
 
         // 巴黎埃菲尔铁塔 (48.8584, 2.2945)
         let paris = encode_with_precision(48.8584, 2.2945, 5);
         assert_eq!(paris, "u09tu");
-        println!("巴黎: {}", paris);
 
         // 悉尼歌剧院 (-33.8568, 151.2153)
         let sydney = encode_with_precision(-33.8568, 151.2153, 5);
         assert_eq!(sydney, "r3gx2");
-        println!("悉尼: {}", sydney);
 
         // 东京 (35.6762, 139.6503)
         let tokyo = encode_with_precision(35.6762, 139.6503, 9);
         assert_eq!(tokyo, "xn76cydhz");
-        println!("东京: {}", tokyo);
     }
 
     #[test]
@@ -476,13 +446,16 @@ mod tests {
         // 南美洲南半球，西半球
         let south_america = encode_with_precision(-23.5505, -46.6333, 4); // 圣保罗
         assert_eq!(south_america.len(), 4);
-        assert!(BASE32.contains(&(south_america.chars().next().unwrap() as u8)));
-        println!("圣保罗 (负坐标): {}", south_america);
+        assert!(
+            south_america
+                .chars()
+                .next()
+                .is_some_and(|first| BASE32.contains(&(first as u8)))
+        );
 
         // 南极洲
         let antarctica = encode_with_precision(-75.0, -120.0, 4);
         assert_eq!(antarctica.len(), 4);
-        println!("南极洲: {}", antarctica);
 
         // 四个象限的测试
         let ne = encode_with_precision(45.0, 90.0, 3); // 东北
@@ -497,8 +470,6 @@ mod tests {
         assert_ne!(nw, se);
         assert_ne!(nw, sw);
         assert_ne!(se, sw);
-
-        println!("四象限: NE={}, NW={}, SE={}, SW={}", ne, nw, se, sw);
     }
 
     #[test]
@@ -525,7 +496,6 @@ mod tests {
                     c
                 );
             }
-            println!("极端坐标 ({}, {}) -> {}", lat, lon, hash);
         }
     }
 
@@ -548,11 +518,6 @@ mod tests {
         assert!(h4.starts_with(&h3));
         assert!(h5.starts_with(&h4));
         assert!(h6.starts_with(&h5));
-
-        println!(
-            "层级关系: {} -> {} -> {} -> {} -> {} -> {}",
-            h1, h2, h3, h4, h5, h6
-        );
     }
 
     #[test]
@@ -565,10 +530,6 @@ mod tests {
         let hash1 = encode_with_precision(base_lat, base_lon, 6);
         let hash2 = encode_with_precision(base_lat + 0.01, base_lon, 6);
         let hash3 = encode_with_precision(base_lat, base_lon + 0.01, 6);
-
-        println!("基准点 (精度6): {}", hash1);
-        println!("北偏移1km: {}", hash2);
-        println!("东偏移1km: {}", hash3);
 
         // 前3-4个字符应该相同（约20-100km范围）
         assert_eq!(&hash1[..3], &hash2[..3]);
@@ -589,8 +550,6 @@ mod tests {
 
         // 它们的第一个字符也应该不同
         assert_ne!(beijing.chars().next(), newyork.chars().next());
-
-        println!("北京: {}, 纽约: {}, 悉尼: {}", beijing, newyork, sydney);
     }
 
     #[test]
@@ -600,26 +559,16 @@ mod tests {
         let hash = "wx4g";
         let neighbors = get_neighbors(hash);
 
-        println!("中心 {} 的邻居: {:?}", hash, neighbors);
-
         // 对于大部分邻居（非边界情况），检查对称性
         let mut symmetric_count = 0;
-        let mut asymmetric = Vec::new();
 
         for neighbor_hash in &neighbors {
             if neighbor_hash != hash {
                 let reverse_neighbors = get_neighbors(neighbor_hash);
                 if reverse_neighbors.contains(&hash.to_string()) {
                     symmetric_count += 1;
-                } else {
-                    asymmetric.push(neighbor_hash.clone());
                 }
             }
-        }
-
-        println!("对称邻居数量: {}/{}", symmetric_count, neighbors.len() - 1);
-        if !asymmetric.is_empty() {
-            println!("非对称邻居: {:?}", asymmetric);
         }
 
         // 大部分邻居应该是对称的（至少 50%）
@@ -637,12 +586,11 @@ mod tests {
         for (hash, precision) in precisions {
             let neighbors = get_neighbors(hash);
             assert!(
-                neighbors.len() >= 1 && neighbors.len() <= 9,
+                !neighbors.is_empty() && neighbors.len() <= 9,
                 "精度 {} 的 GeoHash '{}' 应该有1-9个邻居",
                 precision,
                 hash
             );
-            println!("精度 {} ({}): {} 个邻居", precision, hash, neighbors.len());
         }
     }
 
@@ -736,11 +684,6 @@ mod tests {
         let meridian_north = encode_with_precision(45.0, 0.0, 5);
         let meridian_south = encode_with_precision(-45.0, 0.0, 5);
 
-        println!("赤道西: {}", equator_west);
-        println!("赤道东: {}", equator_east);
-        println!("子午线北: {}", meridian_north);
-        println!("子午线南: {}", meridian_south);
-
         // 它们应该都是不同的
         assert_ne!(equator_west, equator_east);
         assert_ne!(meridian_north, meridian_south);
@@ -768,8 +711,6 @@ mod tests {
             for ch in hash.chars() {
                 assert!(BASE32.contains(&(ch as u8)));
             }
-
-            println!("精度 {}: {}", precision, hash);
         }
     }
 
@@ -785,56 +726,6 @@ mod tests {
 
             assert_eq!(neighbors1, neighbors2);
             assert_eq!(neighbors2, neighbors3);
-        }
-    }
-
-    #[test]
-    fn test_neighbor_debug_wx4g() {
-        // 详细调试 wx4g 的邻居关系
-        let hash = "wx4g";
-        println!("\n=== 调试 {} 的邻居 ===", hash);
-
-        let neighbors = get_neighbors(hash);
-        println!("所有邻居 ({} 个): {:?}", neighbors.len(), neighbors);
-
-        // 测试每个方向
-        if let Some(n) = neighbor(hash, Direction::North) {
-            println!("北: {}", n);
-            let reverse = neighbor(&n, Direction::South);
-            println!("  南回: {:?} (期望: {})", reverse, hash);
-        }
-
-        if let Some(s) = neighbor(hash, Direction::South) {
-            println!("南: {}", s);
-            let reverse = neighbor(&s, Direction::North);
-            println!("  北回: {:?} (期望: {})", reverse, hash);
-        }
-
-        if let Some(e) = neighbor(hash, Direction::East) {
-            println!("东: {}", e);
-            let reverse = neighbor(&e, Direction::West);
-            println!("  西回: {:?} (期望: {})", reverse, hash);
-        }
-
-        if let Some(w) = neighbor(hash, Direction::West) {
-            println!("西: {}", w);
-            let reverse = neighbor(&w, Direction::East);
-            println!("  东回: {:?} (期望: {})", reverse, hash);
-        }
-
-        // 检查每个邻居的反向关系
-        println!("\n检查对称性:");
-        for neighbor_hash in &neighbors {
-            if neighbor_hash != hash {
-                let reverse_neighbors = get_neighbors(neighbor_hash);
-                let is_symmetric = reverse_neighbors.contains(&hash.to_string());
-                println!(
-                    "  {} -> {}: {}",
-                    neighbor_hash,
-                    hash,
-                    if is_symmetric { "✓" } else { "✗" }
-                );
-            }
         }
     }
 }

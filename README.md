@@ -76,14 +76,32 @@ wrangler deploy --env production
 ## 后端 API 接口
 
 * **订阅**: `POST /api/subscribe`
-```json
-{ "bark_id": "key", "latitude": 35.6, "longitude": 139.6, "min_intensity": 3, "bark_level": "critical" }
 
+```json
+{
+  "bark_id": "key",
+  "location_name": "东京",
+  "latitude": 35.6,
+  "longitude": 139.6,
+  "locations": [
+    { "name": "东京", "latitude": 35.6, "longitude": 139.6 }
+  ],
+  "notify_bands": [
+    { "min": 1, "max": 1, "level": "passive", "label": "低烈度" },
+    { "min": 2, "max": 2, "level": "active", "label": "中等烈度" },
+    { "min": 3, "max": 99, "level": "critical", "label": "高烈度" }
+  ]
+}
 ```
 
+* **退订**: `DELETE /api/unsubscribe`
 
-* **退订**: `DELETE /api/unsubscribe/{bark_id}`
+```json
+{ "bark_id": "key" }
+```
+
 * **状态**: `GET /health`
+
 * **统计**: `GET /api/stats`
 
 ## 致谢

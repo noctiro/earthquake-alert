@@ -12,9 +12,7 @@ use axum::{
 };
 use config::Config;
 use db::Database;
-use routes::{
-    AppState, health_handler, stats_handler, subscribe_handler, unsubscribe_by_path_handler,
-};
+use routes::{AppState, health_handler, stats_handler, subscribe_handler, unsubscribe_handler};
 use services::EarthquakeMonitor;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
@@ -46,10 +44,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/api/subscribe", post(subscribe_handler))
-        .route(
-            "/api/unsubscribe/{bark_id}",
-            delete(unsubscribe_by_path_handler),
-        )
+        .route("/api/unsubscribe", delete(unsubscribe_handler))
         .route("/api/stats", get(stats_handler))
         .layer(
             CorsLayer::new()
@@ -65,7 +60,7 @@ async fn main() -> Result<()> {
     tracing::info!("服务器启动中: http://{}", addr);
 
     // 在后台任务中启动地震监控（支持百万级并发）
-    let monitor = EarthquakeMonitor::new(db, config.clone());
+    let monitor = EarthquakeMonitor::new(db, config.clone())?;
     tokio::spawn(async move {
         if let Err(e) = monitor.start().await {
             tracing::error!("地震监控服务错误: {:?}", e);

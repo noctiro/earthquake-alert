@@ -159,7 +159,7 @@ pub fn vincenty_distance(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> Option<f
 
 /// 验证经纬度是否有效
 pub fn validate_coordinates(lat: f64, lon: f64) -> bool {
-    lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0
+    (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)
 }
 
 #[cfg(test)]
@@ -175,14 +175,22 @@ mod tests {
     #[test]
     fn test_short_distance() {
         // 北京到上海 约 1067 km
-        let dist = vincenty_distance(39.9042, 116.4074, 31.2304, 121.4737).unwrap();
+        let dist = vincenty_distance(39.9042, 116.4074, 31.2304, 121.4737);
+        assert!(dist.is_some(), "北京到上海距离应可计算");
+        let Some(dist) = dist else {
+            return;
+        };
         assert!((dist - 1067.0).abs() < 2.0);
     }
 
     #[test]
     fn test_long_distance() {
         // 纽约 (JFK) 到伦敦 (LHR) 约 5555 km (使用 Vincenty 公式)
-        let dist = vincenty_distance(40.6413, -73.7781, 51.4700, -0.4543).unwrap();
+        let dist = vincenty_distance(40.6413, -73.7781, 51.4700, -0.4543);
+        assert!(dist.is_some(), "纽约到伦敦距离应可计算");
+        let Some(dist) = dist else {
+            return;
+        };
         assert!(
             (dist - 5555.0).abs() < 2.0,
             "Expected ~5555 km, got {} km",
@@ -208,7 +216,6 @@ mod tests {
             }
             None => {
                 // 对跖点可能不收敛，这也是可接受的
-                println!("Vincenty did not converge for antipodal points (expected behavior)");
             }
         }
     }
@@ -241,14 +248,22 @@ mod tests {
     #[test]
     fn test_across_prime_meridian() {
         // 伦敦到巴黎
-        let dist = vincenty_distance(51.5074, -0.1278, 48.8566, 2.3522).unwrap();
+        let dist = vincenty_distance(51.5074, -0.1278, 48.8566, 2.3522);
+        assert!(dist.is_some(), "伦敦到巴黎距离应可计算");
+        let Some(dist) = dist else {
+            return;
+        };
         assert!((dist - 344.0).abs() < 2.0);
     }
 
     #[test]
     fn test_across_date_line() {
         // 跨越国际日期变更线
-        let dist = vincenty_distance(0.0, 179.0, 0.0, -179.0).unwrap();
+        let dist = vincenty_distance(0.0, 179.0, 0.0, -179.0);
+        assert!(dist.is_some(), "跨日期变更线距离应可计算");
+        let Some(dist) = dist else {
+            return;
+        };
         assert!(dist < 250.0); // 应该是短距离，不是绕地球
     }
 

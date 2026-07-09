@@ -5,35 +5,84 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
     pub bark_id: String,
+    #[serde(default)]
+    pub bark_server: String,
+    #[serde(default)]
+    pub location_name: String,
     pub latitude: f64,
     pub longitude: f64,
-    pub min_intensity: u8, // 最小烈度阈值 (0-7)
-    #[serde(default = "default_bark_level")]
-    pub bark_level: String,
+    #[serde(default)]
+    pub locations: Vec<SubscriptionLocation>,
+    #[serde(default)]
+    pub notify_bands: Vec<NotificationBand>,
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionLocation {
+    #[serde(default)]
+    pub name: String,
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationBand {
+    pub min: u8,
+    pub max: u8,
+    pub level: String,
+    #[serde(default)]
+    pub label: String,
+}
+
 impl Subscription {
-    pub fn new(
-        bark_id: String,
-        latitude: f64,
-        longitude: f64,
-        min_intensity: u8,
-        bark_level: String,
-    ) -> Self {
+    pub fn new(bark_id: String, latitude: f64, longitude: f64) -> Self {
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
+            .map(|duration| duration.as_millis() as i64)
+            .unwrap_or(0);
 
         Self {
             bark_id,
+            bark_server: String::new(),
+            location_name: String::new(),
             latitude,
             longitude,
-            min_intensity,
-            bark_level,
+            locations: Vec::new(),
+            notify_bands: Vec::new(),
             created_at,
         }
+    }
+
+    pub fn normalized_locations(&self) -> Vec<SubscriptionLocation> {
+        let mut locations = self
+            .locations
+            .iter()
+            .filter(|item| valid_coordinate(item.latitude, item.longitude))
+            .cloned()
+            .collect::<Vec<_>>();
+        if locations.is_empty() && valid_coordinate(self.latitude, self.longitude) {
+            locations.push(SubscriptionLocation {
+                name: self.location_name.clone(),
+                latitude: self.latitude,
+                longitude: self.longitude,
+            });
+        }
+        locations.truncate(3);
+        locations
+    }
+
+    pub fn level_for_intensity(&self, estimated_intensity: u8) -> Option<String> {
+        let mut bands = self.notify_bands.iter().collect::<Vec<_>>();
+        bands.sort_by_key(|band| band.min);
+        bands
+            .into_iter()
+            .find(|band| {
+                validate_bark_level(&band.level)
+                    && estimated_intensity >= band.min
+                    && estimated_intensity <= band.max
+            })
+            .map(|band| band.level.trim().to_ascii_lowercase())
     }
 }
 
@@ -41,24 +90,38 @@ impl Subscription {
 #[derive(Debug, Deserialize)]
 pub struct SubscribeRequest {
     pub bark_id: String,
+    #[serde(default)]
+    pub bark_server: String,
+    #[serde(default)]
+    pub location_name: String,
     pub latitude: f64,
     pub longitude: f64,
-    #[serde(default = "default_min_intensity")]
-    pub min_intensity: u8, // 最小烈度阈值，默认 3
-    #[serde(default = "default_bark_level")]
-    pub bark_level: String,
+    #[serde(default)]
+    pub locations: Vec<SubscriptionLocation>,
+    #[serde(default)]
+    pub notify_bands: Vec<NotificationBand>,
 }
 
-fn default_min_intensity() -> u8 {
-    3 // 默认震度 3 以上推送
-}
-
-fn default_bark_level() -> String {
-    "critical".to_string()
+#[derive(Debug, Deserialize)]
+pub struct UnsubscribeRequest {
+    pub bark_id: String,
 }
 
 pub fn validate_bark_level(level: &str) -> bool {
     matches!(level, "passive" | "active" | "critical")
+}
+
+pub fn valid_coordinate(lat: f64, lon: f64) -> bool {
+    (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)
+}
+
+pub fn mask_bark_id(value: &str) -> String {
+    let value = value.trim();
+    if value.len() <= 6 {
+        "***".to_string()
+    } else {
+        format!("{}***{}", &value[..3], &value[value.len() - 3..])
+    }
 }
 
 /// API 响应
