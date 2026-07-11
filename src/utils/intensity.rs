@@ -1,19 +1,19 @@
 //! 基于震级和震源距估算 JMA 震度
 
-/// 返回 0-7 的整数震度
+/// 返回 0.0-7.0 的连续震度估算值
 ///
 /// 衰减模型为 `I = a * M - b * log10(D + c) + d`，震级分段处会混合两组系数，
 /// 避免估算值在边界附近跳变过大
-pub fn estimate_intensity(magnitude: f64, distance_km: f64) -> u8 {
+pub fn estimate_intensity(magnitude: f64, distance_km: f64) -> f64 {
     if !magnitude.is_finite() || !distance_km.is_finite() || magnitude <= 0.0 || distance_km < 0.0 {
-        return 0;
+        return 0.0;
     }
 
     let (a, b, c, d) = intensity_coefficients(magnitude);
     let effective_distance = distance_km.max(1.0);
     let intensity = a * magnitude - b * (effective_distance + c).log10() + d;
 
-    intensity.clamp(0.0, 7.0).round() as u8
+    intensity.clamp(0.0, 7.0)
 }
 
 fn intensity_coefficients(magnitude: f64) -> (f64, f64, f64, f64) {
@@ -63,13 +63,13 @@ mod tests {
     #[test]
     fn test_estimate_intensity() {
         let i1 = estimate_intensity(7.0, 10.0);
-        assert!(i1 >= 5);
+        assert!(i1 >= 5.0);
 
         let i2 = estimate_intensity(7.0, 100.0);
         assert!(i2 < i1);
 
         let i3 = estimate_intensity(5.0, 50.0);
-        assert!((1..=5).contains(&i3));
+        assert!((1.0..=5.0).contains(&i3));
 
         let i4 = estimate_intensity(4.0, 10.0);
         assert!(i4 <= i3);
@@ -79,23 +79,23 @@ mod tests {
     fn test_magnitude_boundary_smoothing() {
         let before = estimate_intensity(4.9, 240.0);
         let after = estimate_intensity(5.0, 240.0);
-        assert!(after.saturating_sub(before) <= 1);
+        assert!(after - before <= 1.0);
 
-        assert_eq!(estimate_intensity(5.1, 280.0), 2);
-        assert_eq!(estimate_intensity(4.8, 280.0), 1);
+        assert!((estimate_intensity(5.1, 280.0) - 2.485).abs() < 0.001);
+        assert!((estimate_intensity(4.8, 280.0) - 1.432).abs() < 0.001);
     }
 
     #[test]
     fn rejects_non_finite_inputs() {
-        assert_eq!(estimate_intensity(f64::NAN, 10.0), 0);
-        assert_eq!(estimate_intensity(5.0, f64::INFINITY), 0);
-        assert_eq!(estimate_intensity(f64::INFINITY, 10.0), 0);
+        assert_eq!(estimate_intensity(f64::NAN, 10.0), 0.0);
+        assert_eq!(estimate_intensity(5.0, f64::INFINITY), 0.0);
+        assert_eq!(estimate_intensity(f64::INFINITY, 10.0), 0.0);
     }
 
     #[test]
     fn near_field_is_continuous_at_one_kilometer() {
         let just_under = estimate_intensity(5.0, 0.99);
         let at_one = estimate_intensity(5.0, 1.0);
-        assert!(at_one.abs_diff(just_under) <= 1);
+        assert!((at_one - just_under).abs() <= 0.01);
     }
 }

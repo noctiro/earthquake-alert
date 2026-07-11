@@ -709,7 +709,7 @@ fn match_subscription(
     let timing = earthquake_timing(event, distance_km, policy);
     let level = match alert {
         AlertRule::EarthquakeWarning { .. } => stored
-            .interruption_level_for_intensity(timing.as_ref()?.estimated_intensity)?
+            .interruption_level_for_intensity(timing.as_ref()?.estimated_intensity.round() as u8)?
             .as_str()
             .to_string(),
         AlertRule::EarthquakeReport { min_magnitude, .. } => {

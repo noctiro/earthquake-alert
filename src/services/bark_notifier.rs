@@ -26,7 +26,7 @@ pub struct BarkPushConfig {
 pub struct AlertTiming {
     pub distance_km: f64,
     pub hypocentral_km: f64,
-    pub estimated_intensity: u8,
+    pub estimated_intensity: f64,
     pub seconds_to_p: i64,
     pub seconds_to_s: i64,
 }
@@ -142,7 +142,7 @@ impl BarkNotifier {
                 timing.distance_km, timing.hypocentral_km
             ));
             lines.push(format!(
-                "预计: P波{:+}秒 S波{:+}秒 烈度{}",
+                "预计: P波{:+}秒 S波{:+}秒 烈度{:.1}",
                 timing.seconds_to_p, timing.seconds_to_s, timing.estimated_intensity
             ));
         }
