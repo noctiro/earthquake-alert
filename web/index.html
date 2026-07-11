@@ -111,7 +111,6 @@
       border-bottom: 1px solid var(--line);
     }
     .identity-grid .field { margin: 0; }
-    .identity-grid.single { grid-template-columns: minmax(0, 1fr); }
     .workspace {
       display: grid;
       grid-template-columns: minmax(440px, 1.06fr) minmax(380px, .94fr);
@@ -130,6 +129,7 @@
       line-height: 1.3;
     }
     .workspace-heading > h2 { margin: 0; font: inherit; }
+    .location-heading > span { display: flex; align-items: center; gap: 8px; }
     .workspace-heading span { color: var(--muted); font-size: 12px; font-weight: 650; }
     .workspace-heading .heading-action {
       width: auto;
@@ -185,6 +185,7 @@
     .admin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; }
     .coordinate-grid { gap: 10px; }
     #map {
+      position: relative;
       height: 370px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -192,6 +193,79 @@
       background: var(--soft);
       margin-bottom: 12px;
     }
+    .map-shell { position: relative; }
+    .map-shell #map { margin-bottom: 0; }
+    .map-mode {
+      position: absolute;
+      z-index: 500;
+      top: 10px;
+      left: 10px;
+      max-width: calc(100% - 20px);
+      padding: 7px 10px;
+      border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+      border-radius: 6px;
+      color: var(--text);
+      background: color-mix(in srgb, var(--panel) 96%, transparent);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.35;
+      pointer-events: none;
+    }
+    .map-mode.is-selecting { color: var(--info); border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); }
+    .leaflet-control-zoom a,
+    .map-tool-button {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      color: var(--text);
+      background: color-mix(in srgb, var(--panel) 96%, transparent);
+      font: 700 20px/1 Arial, sans-serif;
+    }
+    .leaflet-control-zoom a:last-child, .map-tool-button:last-child { border-bottom: 0; }
+    .leaflet-control-zoom a:hover, .map-tool-button:hover { color: var(--primary); background: var(--info-bg); }
+    .leaflet-bar { border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); overflow: hidden; }
+    .map-tool-group { margin-top: 8px; }
+    .map-tool-button { position: relative; cursor: pointer; font-size: 0; }
+    .map-tool-button:disabled { cursor: wait; opacity: .55; }
+    .map-tool-icon { position: relative; display: block; width: 18px; height: 18px; color: currentColor; }
+    .map-tool-icon.locate::before {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border: 2px solid currentColor;
+      border-radius: 50%;
+    }
+    .map-tool-icon.locate::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(currentColor, currentColor) center top / 2px 5px no-repeat,
+        linear-gradient(currentColor, currentColor) center bottom / 2px 5px no-repeat,
+        linear-gradient(currentColor, currentColor) left center / 5px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) right center / 5px 2px no-repeat;
+    }
+    .map-tool-icon.fit::before {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      background:
+        linear-gradient(currentColor, currentColor) left top / 7px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) left top / 2px 7px no-repeat,
+        linear-gradient(currentColor, currentColor) right top / 7px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) right top / 2px 7px no-repeat,
+        linear-gradient(currentColor, currentColor) left bottom / 7px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) left bottom / 2px 7px no-repeat,
+        linear-gradient(currentColor, currentColor) right bottom / 7px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) right bottom / 2px 7px no-repeat;
+    }
+    .map-tool-icon.fit::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: currentColor; }
     #map.map-unavailable { display: grid; place-items: center; }
     #map.map-unavailable::after {
       content: "地图暂时不可用，请填写经纬度";
@@ -203,17 +277,23 @@
     @media (prefers-color-scheme: dark) {
       .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%); }
     }
-    .location-toolbar {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    .map-actions { display: flex; justify-content: flex-end; gap: 6px; margin: 8px 0 14px; }
+    .map-actions button { width: auto; height: 36px; padding: 0 10px; color: var(--muted); background: var(--soft); font-size: 12px; }
+    .locations-section { margin-top: 14px; }
+    .locations-section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
     }
-    .location-toolbar { margin-top: 12px; }
-    .location-toolbar #add-location { color: var(--primary); background: var(--info-bg); }
     .locations-list {
       display: grid;
       gap: 8px;
-      margin: 12px 0 0;
+      margin: 0;
     }
     .location-item, .locations-empty {
       border: 1px solid var(--line);
@@ -222,11 +302,45 @@
     }
     .location-item {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 8px;
       align-items: center;
-      min-height: 56px;
-      padding: 9px 10px;
+      min-height: 72px;
+      padding: 9px;
+    }
+    .location-item.is-active { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent); }
+    .location-item.is-incomplete { border-style: dashed; }
+    .location-index {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--primary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .location-focus {
+      width: 100%;
+      height: auto;
+      min-width: 0;
+      padding: 3px 0;
+      border-radius: 0;
+      text-align: left;
+      background: transparent;
+    }
+    .location-focus:hover { color: var(--primary); }
+    .location-focus > span { display: block; }
+    .location-actions { display: flex; gap: 4px; }
+    .location-actions button {
+      width: auto;
+      height: 36px;
+      padding: 0 10px;
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--soft);
+      font-size: 12px;
     }
     .locations-empty {
       border-style: dashed;
@@ -259,7 +373,48 @@
       color: var(--muted);
       font-weight: 900;
     }
-    .remove-location { color: var(--err); background: var(--err-bg); }
+    .location-actions .remove-location { width: 36px; min-width: 36px; height: 36px; color: var(--err); background: var(--err-bg); }
+    .location-editor {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+    }
+    .location-editor[hidden] { display: none; }
+    .location-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .location-editor-title { margin: 0; font-size: 14px; line-height: 1.3; }
+    .location-editor-subtitle { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 650; line-height: 1.35; }
+    .location-picker {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--line));
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--info-bg) 46%, var(--panel));
+    }
+    .location-picker-heading { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .location-details { display: grid; gap: 12px; }
+    .location-details[hidden] { display: none; }
+    .location-editor-actions { display: grid; grid-template-columns: minmax(100px, .65fr) minmax(140px, 1fr); gap: 8px; }
+    .location-editor-actions button { width: 100%; height: 42px; }
+    .location-editor-cancel { color: var(--muted); background: var(--soft); }
+    .target-marker {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--primary);
+      box-shadow: 0 1px 5px rgba(0, 0, 0, .28);
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .target-marker.is-active { background: #d92d20; transform: scale(1.12); }
     .config-disclosure {
       margin-top: 12px;
       border: 1px solid var(--line);
@@ -420,13 +575,14 @@
       .topline { gap: 8px; }
       h1 { font-size: 28px; line-height: 1.12; }
       .badge { min-height: 32px; padding: 0 10px; font-size: 12px; }
-      .identity-grid, .grid, .location-toolbar, .form-actions { grid-template-columns: 1fr; }
+      .identity-grid, .grid, .form-actions { grid-template-columns: 1fr; }
       .admin-grid { grid-template-columns: 1fr; }
       .identity-grid { padding-bottom: 16px; margin-bottom: 18px; }
       .workspace { gap: 16px; }
       .workspace-section + .workspace-section { margin-top: 16px; }
       input, select { font-size: 16px; }
       #map { height: 270px; }
+      .location-heading { align-items: flex-start; flex-wrap: wrap; }
       .form-actions { gap: 12px; }
       .toast-stack { bottom: 16px; width: calc(100% - 24px); }
     }
@@ -482,16 +638,17 @@
     .rule-field small { margin: 0; }
     .intensity-actions { display: flex; gap: 4px; }
     .intensity-actions button { width: auto; height: 28px; padding: 0 8px; border-radius: 6px; color: var(--muted); font-size: 12px; background: var(--soft); }
-    .intensity-rules { display: grid; gap: 8px; }
+    .intensity-rules { display: grid; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
     .intensity-rule {
       display: grid;
-      gap: 9px;
+      grid-template-columns: 56px minmax(0, 1fr) 28px;
+      gap: 10px;
+      align-items: end;
       padding: 10px;
-      border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-      border-radius: 6px;
-      background: color-mix(in srgb, var(--soft) 60%, transparent);
+      background: color-mix(in srgb, var(--panel) 96%, var(--bg));
     }
-    .intensity-rule-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; }
+    .intensity-rule + .intensity-rule { border-top: 1px solid var(--line); }
+    .intensity-rule-header { display: flex; align-items: center; min-height: 40px; }
     .intensity-rule-name { color: var(--muted); font-size: 12px; font-weight: 850; }
     .remove-intensity-rule { width: 28px; height: 28px; min-width: 28px; border-radius: 6px; font-size: 17px; line-height: 1; }
     .intensity-rule-fields { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr); gap: 10px; }
@@ -516,9 +673,14 @@
     }
     .notify-warning.show { display: block; }
     @media (max-width: 640px) {
+      .intensity-rule { grid-template-columns: 44px minmax(0, 1fr) 28px; align-items: start; }
       .intensity-rule-fields { grid-template-columns: 1fr; }
       .intensity-actions { width: auto; }
       .intensity-actions button { flex: 0 0 auto; }
+      .location-item { grid-template-columns: auto minmax(0, 1fr); }
+      .location-actions { grid-column: 2; }
+      .location-actions button { flex: 1; min-height: 40px; }
+      .location-actions .remove-location { width: 40px; min-width: 40px; height: 40px; flex: 0 0 40px; }
     }
   </style>
 </head>
@@ -551,38 +713,60 @@
         <div class="workspace">
           <div class="workspace-column">
             <section class="workspace-section">
-              <h2 class="workspace-heading">监测地点 <span>最多 3 个</span></h2>
-              <div id="map"></div>
-              <div class="grid">
-                <label class="input-label" for="location-name">地点名称（可选）<input id="location-name" type="text" maxlength="80" placeholder="例如：家、公司" /></label>
-                <div class="grid coordinate-grid">
-                  <label class="input-label" for="latitude">纬度<input id="latitude" type="number" step="0.0001" min="-90" max="90" placeholder="例如：35.6762" /></label>
-                  <label class="input-label" for="longitude">经度<input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="例如：139.6503" /></label>
-                </div>
+              <div class="workspace-heading location-heading">
+                <h2>监测地点</h2>
+                <span id="location-count">0 / 3</span>
               </div>
-              <small>点击地图、使用定位或填写经纬度后，将地点加入监测列表。</small>
-              <div class="location-toolbar">
-                <button type="button" id="locate">定位当前位置</button>
-                <button type="button" id="add-location">添加当前地点</button>
+              <div class="map-shell">
+                <div id="map"></div>
+                <div id="map-mode" class="map-mode">点击地图添加监测地点</div>
               </div>
-              <div class="region-match">
-                <div class="region-match-copy">
-                  <span class="region-match-label">区域匹配</span>
-                  <span id="region-status" class="region-match-value">选点后自动解析</span>
-                </div>
-                <button id="edit-region" class="region-edit-toggle" type="button">修改</button>
+              <div class="map-actions">
+                <button type="button" id="start-add-location">手动输入坐标</button>
               </div>
-              <div id="region-editor" class="region-editor" hidden>
-                <div class="region-editor-inner">
-                  <div class="grid admin-grid">
-                    <label class="input-label" for="province">省/州<input id="province" type="text" maxlength="80" placeholder="可选" /></label>
-                    <label class="input-label" for="city">城市<input id="city" type="text" maxlength="80" placeholder="可选" /></label>
-                    <label class="input-label" for="district">区/县<input id="district" type="text" maxlength="80" placeholder="可选" /></label>
+              <div id="location-editor" class="location-editor" hidden>
+                <div class="location-editor-heading">
+                  <div>
+                    <h3 id="location-editor-title" class="location-editor-title">添加监测地点</h3>
+                    <span id="location-editor-subtitle" class="location-editor-subtitle"></span>
                   </div>
-                  <small class="region-editor-note">自动识别结果可手动修正。填写行政区可提高气象预警覆盖，并用于海啸区域匹配。</small>
+                </div>
+                <div class="location-picker">
+                  <span id="location-picker-heading" class="location-picker-heading">在地图点击位置，或输入坐标</span>
+                  <div class="grid coordinate-grid">
+                    <label class="input-label" for="latitude">纬度<input id="latitude" type="number" step="0.0001" min="-90" max="90" placeholder="例如：35.6762" /></label>
+                    <label class="input-label" for="longitude">经度<input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="例如：139.6503" /></label>
+                  </div>
+                </div>
+                <div id="location-details" class="location-details" hidden>
+                  <label class="input-label" for="location-name">地点名称（可选）<input id="location-name" type="text" maxlength="80" placeholder="例如：家、公司" /></label>
+                  <div class="region-match">
+                    <div class="region-match-copy">
+                      <span class="region-match-label">区域匹配</span>
+                      <span id="region-status" class="region-match-value">选点后自动解析</span>
+                    </div>
+                    <button id="edit-region" class="region-edit-toggle" type="button">手动填写</button>
+                  </div>
+                  <div id="region-editor" class="region-editor" hidden>
+                    <div class="region-editor-inner">
+                      <div class="grid admin-grid">
+                        <label class="input-label" for="province">省/州<input id="province" type="text" maxlength="80" placeholder="可选" /></label>
+                        <label class="input-label" for="city">城市<input id="city" type="text" maxlength="80" placeholder="可选" /></label>
+                        <label class="input-label" for="district">区/县<input id="district" type="text" maxlength="80" placeholder="可选" /></label>
+                      </div>
+                      <small class="region-editor-note">填写行政区可提高气象预警覆盖，并用于海啸区域匹配。</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="location-editor-actions">
+                  <button id="discard-location-edit" class="location-editor-cancel" type="button">取消</button>
+                  <button type="button" id="finish-location" class="primary">完成添加</button>
                 </div>
               </div>
-              <div id="locations-list" class="locations-list"></div>
+              <div class="locations-section">
+                <div class="locations-section-heading"><span>已添加地点</span><span id="locations-summary">尚未添加</span></div>
+                <div id="locations-list" class="locations-list"></div>
+              </div>
             </section>
           </div>
           <div class="workspace-column">
@@ -596,7 +780,7 @@
           </div>
         </div>
         <div class="form-actions">
-          <div class="form-actions-note">保存会覆盖同一 Bark 服务与 Key 的已有订阅配置。</div>
+          <div id="draft-status" class="form-actions-note">配置草稿会保存在当前浏览器；Bark Key 不会保存在浏览器中。</div>
           <button class="danger" id="unsubscribe" type="button">取消订阅</button>
           <button class="primary" id="submit" type="submit">保存/覆盖订阅</button>
         </div>
@@ -611,12 +795,12 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script>
     const api = (window.DISASTER_API_BASE || window.location.origin).replace(/\/$/, "");
-    const storageKey = "disaster_subscription_draft_v2";
+    const storageKey = "disaster_subscription_draft_v3";
+    const legacyStorageKey = "disaster_subscription_draft_v2";
     const form = document.querySelector("#subscribe-form");
     const barkInput = document.querySelector("#bark-id");
     const barkUrlInput = document.querySelector("#bark-url");
     const barkUrlField = document.querySelector("#bark-url-field");
-    const identityGrid = document.querySelector("#identity-grid");
     const nameInput = document.querySelector("#location-name");
     const provinceInput = document.querySelector("#province");
     const cityInput = document.querySelector("#city");
@@ -627,50 +811,93 @@
     const latInput = document.querySelector("#latitude");
     const lonInput = document.querySelector("#longitude");
     const locationsList = document.querySelector("#locations-list");
+    const locationCount = document.querySelector("#location-count");
+    const locationsSummary = document.querySelector("#locations-summary");
+    const locationEditor = document.querySelector("#location-editor");
+    const locationEditorTitle = document.querySelector("#location-editor-title");
+    const locationEditorSubtitle = document.querySelector("#location-editor-subtitle");
+    const locationPickerHeading = document.querySelector("#location-picker-heading");
+    const locationDetails = document.querySelector("#location-details");
+    const mapMode = document.querySelector("#map-mode");
+    const startAddLocation = document.querySelector("#start-add-location");
+    const finishLocation = document.querySelector("#finish-location");
+    const discardLocationEdit = document.querySelector("#discard-location-edit");
+    const draftStatus = document.querySelector("#draft-status");
     let notifyBandsEl = null;
     let notifyWarning = null;
     const toastStack = document.querySelector("#toast-stack");
     const retryConfig = document.querySelector("#retry-config");
     const submit = document.querySelector("#submit");
     const unsubscribe = document.querySelector("#unsubscribe");
-    const locate = document.querySelector("#locate");
-    const addLocation = document.querySelector("#add-location");
+    let locate = null;
     const stats = document.querySelector("#stats");
     const statusDot = document.querySelector("#status-dot");
     const disasterGroupsEl = document.querySelector("#disaster-groups");
     const resetAlertRules = document.querySelector("#reset-alert-rules");
     const notifyLevelOrder = ["passive", "active", "critical"];
-    let selectedLocations = [];
-    let notifyBands = defaultNotifyBands();
+    let subscriptionDraft = createEmptyDraft();
+    let lastSubmittedSignature = "";
+    let lastSubmittedIdentity = "";
+    let persistTimer = null;
+    const uiState = {
+      activeTargetId: null,
+      locationMode: "overview",
+      editingTarget: null,
+    };
+    const targetMarkers = new Map();
+    const targetCoordinateRevisions = new Map();
+    const targetRegionRevisions = new Map();
+    const geocodeJobs = new Map();
     const expandedDisasterCategories = new Set();
-    let marker = null;
     let barkUrls = [];
     let optionCategories = [];
-    let alertRules = {};
-    let disabledAlertRules = {};
-    let editingLocationIndex = null;
     let configurationReady = false;
     let subscriptionRequestInFlight = false;
-    let geocodeTimer = null;
-    let geocodeController = null;
-    let geocodeGeneration = 0;
-    let regionEditRevision = 0;
-    let geocodePending = null;
-    let resolveGeocodePending = null;
 
     function setSubscriptionRequestInFlight(inFlight) {
       subscriptionRequestInFlight = inFlight;
       submit.disabled = inFlight || !configurationReady;
       unsubscribe.disabled = inFlight;
       resetAlertRules.disabled = inFlight || !configurationReady;
+      startAddLocation.disabled = inFlight || subscriptionDraft.targets.length >= 3 || uiState.locationMode !== "overview";
+      finishLocation.disabled = inFlight || (uiState.locationMode !== "overview" && !targetCoordinates(activeTarget()));
+      discardLocationEdit.disabled = inFlight;
     }
     let initializationGeneration = 0;
 
     const mapElement = document.querySelector("#map");
     const map = window.L
-      ? L.map(mapElement, { zoomControl: false, attributionControl: false }).setView([35, 105], 4)
+      ? L.map(mapElement, { zoomControl: true, attributionControl: false }).setView([35, 105], 4)
       : null;
-    if (map) L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    if (map) {
+      map.zoomControl.setPosition("topright");
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+      const MapTools = L.Control.extend({
+        options: { position: "topright" },
+        onAdd() {
+          const container = L.DomUtil.create("div", "leaflet-bar map-tool-group");
+          locate = L.DomUtil.create("button", "map-tool-button", container);
+          locate.type = "button";
+          locate.innerHTML = '<span class="map-tool-icon locate" aria-hidden="true"></span>';
+          locate.title = "定位当前位置";
+          locate.setAttribute("aria-label", "定位当前位置");
+          const fit = L.DomUtil.create("button", "map-tool-button", container);
+          fit.type = "button";
+          fit.innerHTML = '<span class="map-tool-icon fit" aria-hidden="true"></span>';
+          fit.title = "显示全部监测地点";
+          fit.setAttribute("aria-label", "显示全部监测地点");
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.disableScrollPropagation(container);
+          L.DomEvent.on(locate, "click", locateCurrentPosition);
+          L.DomEvent.on(fit, "click", () => {
+            if (!subscriptionDraft.targets.some(targetCoordinates)) return show("尚未添加监测地点", "info");
+            fitTargetMarkers();
+          });
+          return container;
+        },
+      });
+      new MapTools().addTo(map);
+    }
     else mapElement.classList.add("map-unavailable");
 
     function show(message, type = "info") {
@@ -780,20 +1007,107 @@
       notifyWarning.classList.toggle("show", Boolean(message));
     }
 
+    function createEmptyDraft() {
+      return {
+        schema_version: 3,
+        bark_url: "",
+        targets: [],
+        alerts_by_category: {},
+      };
+    }
+
+    function createTarget() {
+      const id = window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      return {
+        id,
+        label: "",
+        point: { latitude: "", longitude: "" },
+        region: { province: "", city: "", district: "" },
+      };
+    }
+
+    function parseCoordinate(value) {
+      const raw = String(value ?? "").trim();
+      if (!raw) return null;
+      const number = Number(raw);
+      return Number.isFinite(number) ? number : null;
+    }
+
     function validCoordinate(lat, lon) {
       return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
     }
 
-    function setPosition(lat, lon, zoom = 10) {
-      lat = Number(lat);
-      lon = Number(lon);
-      if (!validCoordinate(lat, lon)) return;
-      latInput.value = lat.toFixed(4);
-      lonInput.value = lon.toFixed(4);
+    function targetCoordinates(target) {
+      const latitude = parseCoordinate(target?.point?.latitude);
+      const longitude = parseCoordinate(target?.point?.longitude);
+      return validCoordinate(latitude, longitude) ? { latitude, longitude } : null;
+    }
+
+    function targetById(id) {
+      return subscriptionDraft.targets.find((target) => target.id === id) || null;
+    }
+
+    function activeTarget() {
+      return uiState.locationMode === "overview" ? targetById(uiState.activeTargetId) : uiState.editingTarget;
+    }
+
+    function workingTargetById(id) {
+      return uiState.editingTarget?.id === id ? uiState.editingTarget : targetById(id);
+    }
+
+    function cloneTarget(target) {
+      return {
+        id: target.id,
+        label: String(target.label || ""),
+        point: {
+          latitude: String(target.point?.latitude ?? ""),
+          longitude: String(target.point?.longitude ?? ""),
+        },
+        region: {
+          province: String(target.region?.province || ""),
+          city: String(target.region?.city || ""),
+          district: String(target.region?.district || ""),
+        },
+      };
+    }
+
+    function targetLabel(target) {
+      const label = String(target?.label || "").trim();
+      if (label) return label;
+      const coordinates = targetCoordinates(target);
+      return coordinates ? `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}` : "未命名地点";
+    }
+
+    function formatCoordinate(value) {
+      const number = parseCoordinate(value);
+      return number === null ? "" : number.toFixed(4);
+    }
+
+    function targetRegion(target) {
+      return [target?.region?.province, target?.region?.city, target?.region?.district]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" · ");
+    }
+
+    function nextRevision(map, id) {
+      const revision = (map.get(id) || 0) + 1;
+      map.set(id, revision);
+      return revision;
+    }
+
+    function setMapView(latitude, longitude, zoom = 12) {
+      if (map && validCoordinate(latitude, longitude)) map.setView([latitude, longitude], zoom);
+    }
+
+    function fitTargetMarkers() {
       if (!map) return;
-      if (marker) marker.setLatLng([lat, lon]);
-      else marker = L.marker([lat, lon]).addTo(map);
-      map.setView([lat, lon], zoom);
+      const points = subscriptionDraft.targets
+        .map(targetCoordinates)
+        .filter(Boolean)
+        .map(({ latitude, longitude }) => [latitude, longitude]);
+      if (points.length === 1) map.setView(points[0], 10);
+      else if (points.length > 1) map.fitBounds(points, { padding: [32, 32], maxZoom: 10 });
     }
 
     function setRegionStatus(message, state = "") {
@@ -821,146 +1135,273 @@
       }
     }
 
-    function scheduleReverseGeocode(lat, lon, delay = 350) {
-      if (!validCoordinate(Number(lat), Number(lon))) return;
-      if (geocodeTimer) clearTimeout(geocodeTimer);
-      if (geocodeController) geocodeController.abort();
-      if (resolveGeocodePending) resolveGeocodePending();
-      const generation = ++geocodeGeneration;
-      setRegionStatus("正在解析...", "loading");
-      geocodePending = new Promise((resolve) => {
-        resolveGeocodePending = resolve;
-        geocodeTimer = setTimeout(() => {
-          reverseGeocode(Number(lat), Number(lon), generation).finally(() => {
-            resolve();
-            if (generation === geocodeGeneration) resolveGeocodePending = null;
-          });
-        }, delay);
+    function cancelReverseGeocode(targetId) {
+      const job = geocodeJobs.get(targetId);
+      if (!job) return;
+      if (job.timer) clearTimeout(job.timer);
+      job.controller?.abort();
+      geocodeJobs.delete(targetId);
+    }
+
+    function scheduleReverseGeocode(targetId, delay = 350) {
+      const target = workingTargetById(targetId);
+      const coordinates = targetCoordinates(target);
+      if (!target || !coordinates) return;
+      cancelReverseGeocode(targetId);
+      const coordinateRevision = targetCoordinateRevisions.get(targetId) || 0;
+      const regionRevision = targetRegionRevisions.get(targetId) || 0;
+      if (uiState.activeTargetId === targetId) setRegionStatus("正在解析...", "loading");
+      const controller = new AbortController();
+      const job = { controller, timer: null, coordinateRevision, regionRevision };
+      job.timer = setTimeout(() => {
+        reverseGeocode(targetId, coordinates, job).catch(() => {});
+      }, delay);
+      geocodeJobs.set(targetId, job);
+    }
+
+    async function reverseGeocode(targetId, coordinates, job) {
+      try {
+        const query = new URLSearchParams({ latitude: String(coordinates.latitude), longitude: String(coordinates.longitude) });
+        const res = await fetch(`${api}/api/reverse-geocode?${query}`, { signal: job.controller.signal });
+        const json = await parseApiResponse(res);
+        const target = workingTargetById(targetId);
+        if (!target || geocodeJobs.get(targetId) !== job) return;
+        if ((targetCoordinateRevisions.get(targetId) || 0) !== job.coordinateRevision) return;
+        if ((targetRegionRevisions.get(targetId) || 0) !== job.regionRevision) return;
+        if (!res.ok || !json.success || !json.data) throw new Error(json.message || "无法解析区域信息");
+        target.region.province = json.data.province || "";
+        target.region.city = json.data.city || "";
+        target.region.district = json.data.district || "";
+        const resolved = targetRegion(target);
+        if (uiState.activeTargetId === targetId) {
+          provinceInput.value = target.region.province;
+          cityInput.value = target.region.city;
+          districtInput.value = target.region.district;
+          setRegionStatus(resolved || "未识别到行政区", resolved ? "ready" : "");
+        }
+        renderLocations();
+        persistDraft();
+      } catch (error) {
+        if (error.name === "AbortError" || geocodeJobs.get(targetId) !== job) return;
+        if (uiState.activeTargetId === targetId) setRegionStatus("自动解析失败，可手动填写");
+        show(error.message || "区域信息自动解析失败", "warning");
+      } finally {
+        if (geocodeJobs.get(targetId) === job) geocodeJobs.delete(targetId);
+      }
+    }
+
+    function renderTargetMarkers() {
+      if (!map) return;
+      const validIds = new Set();
+      const markerTargets = subscriptionDraft.targets.map((target) =>
+        uiState.editingTarget?.id === target.id ? uiState.editingTarget : target
+      );
+      if (uiState.locationMode === "adding" && uiState.editingTarget) markerTargets.push(uiState.editingTarget);
+      markerTargets.forEach((target, index) => {
+        const coordinates = targetCoordinates(target);
+        if (!coordinates) return;
+        validIds.add(target.id);
+        const active = target.id === uiState.activeTargetId;
+        const icon = L.divIcon({
+          className: "",
+          html: `<span class="target-marker${active ? " is-active" : ""}">${index + 1}</span>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        let marker = targetMarkers.get(target.id);
+        if (!marker) {
+          marker = L.marker([coordinates.latitude, coordinates.longitude], { icon, keyboard: true });
+          marker.on("click", () => focusTarget(target.id));
+          marker.addTo(map);
+          targetMarkers.set(target.id, marker);
+        } else {
+          marker.setLatLng([coordinates.latitude, coordinates.longitude]);
+          marker.setIcon(icon);
+        }
+      });
+      targetMarkers.forEach((marker, targetId) => {
+        if (!validIds.has(targetId)) {
+          map.removeLayer(marker);
+          targetMarkers.delete(targetId);
+        }
       });
     }
 
-    async function reverseGeocode(lat, lon, generation) {
-      geocodeController = new AbortController();
-      const editRevision = regionEditRevision;
-      try {
-        const query = new URLSearchParams({ latitude: String(lat), longitude: String(lon) });
-        const res = await fetch(`${api}/api/reverse-geocode?${query}`, { signal: geocodeController.signal });
-        const json = await parseApiResponse(res);
-        if (generation !== geocodeGeneration || editRevision !== regionEditRevision) return;
-        if (!res.ok || !json.success || !json.data) throw new Error(json.message || "无法解析区域信息");
-        if (Number(latInput.value).toFixed(4) !== lat.toFixed(4) || Number(lonInput.value).toFixed(4) !== lon.toFixed(4)) return;
-        provinceInput.value = json.data.province || "";
-        cityInput.value = json.data.city || "";
-        districtInput.value = json.data.district || "";
-        const resolved = [provinceInput.value, cityInput.value, districtInput.value].filter(Boolean);
-        setRegionStatus(resolved.length ? resolved.join(" · ") : "未识别到行政区", resolved.length ? "ready" : "");
-        persistDraft();
-      } catch (error) {
-        if (error.name === "AbortError" || generation !== geocodeGeneration) return;
-        setRegionStatus("自动解析失败，可手动填写");
-        show(error.message || "区域信息自动解析失败", "warning");
-      } finally {
-        if (generation === geocodeGeneration) {
-          geocodeController = null;
-          geocodePending = null;
-        }
-      }
-    }
-
-    function locationLabel(location) {
-      const name = String(location.name || "").trim();
-      return name || `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}`;
-    }
-
-    function formatCoordinate(value) {
-      const number = Number(value);
-      return Number.isFinite(number) ? number.toFixed(4) : "";
-    }
-
-    function locationRegion(location) {
-      return [location.province, location.city, location.district]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean)
-        .join(" · ");
-    }
-
-    function normalizeLocations(items) {
-      const seen = new Set();
-      const result = [];
-      for (const item of items || []) {
-        const lat = Number(item.latitude);
-        const lon = Number(item.longitude);
-        if (!validCoordinate(lat, lon)) continue;
-        const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        result.push({
-          name: String(item.name || "").trim(), latitude: lat, longitude: lon,
-          province: String(item.province || "").trim(), city: String(item.city || "").trim(),
-          district: String(item.district || "").trim(),
-        });
-        if (result.length >= 3) break;
-      }
-      return result;
+    function renderLocationEditor() {
+      const target = activeTarget();
+      const open = Boolean(target && uiState.locationMode !== "overview");
+      locationEditor.hidden = !open;
+      if (!open) return;
+      const adding = uiState.locationMode === "adding";
+      const coordinates = targetCoordinates(target);
+      locationEditorTitle.textContent = adding ? "添加监测地点" : "编辑监测地点";
+      locationEditorSubtitle.textContent = adding
+        ? coordinates ? "位置已选择，可补充名称后保存" : "先选择需要监测的位置"
+        : targetLabel(target);
+      locationPickerHeading.textContent = coordinates ? "当前位置，可在地图点击以调整" : "在地图点击位置，或输入坐标";
+      locationDetails.hidden = adding && !coordinates;
+      finishLocation.disabled = subscriptionRequestInFlight || !coordinates;
+      finishLocation.textContent = adding ? "保存地点" : "保存修改";
+      nameInput.value = target.label || "";
+      latInput.value = target.point.latitude ?? "";
+      lonInput.value = target.point.longitude ?? "";
+      provinceInput.value = target.region.province || "";
+      cityInput.value = target.region.city || "";
+      districtInput.value = target.region.district || "";
+      const region = targetRegion(target);
+      setRegionStatus(region || "正在根据位置识别", region ? "ready" : "");
+      mapMode.textContent = adding && !coordinates ? "点击地图选择监测位置" : adding ? "位置已选择，点击地图可调整" : "编辑中：点击地图可移动此地点";
+      mapMode.classList.add("is-selecting");
     }
 
     function renderLocations() {
-      selectedLocations = normalizeLocations(selectedLocations);
-      if (editingLocationIndex !== null && !selectedLocations[editingLocationIndex]) cancelLocationEdit();
-      if (!selectedLocations.length) {
-        locationsList.innerHTML = '<div class="locations-empty">尚未添加监测地点，点击地图、定位，或输入经纬度后添加</div>';
-        return;
+      const count = subscriptionDraft.targets.length;
+      locationCount.textContent = `${count} / 3`;
+      locationsSummary.textContent = count ? `共 ${count} 个，可添加 ${3 - count} 个` : "尚未添加";
+      startAddLocation.disabled = count >= 3 || subscriptionRequestInFlight || uiState.locationMode !== "overview";
+      if (!count) {
+        locationsList.innerHTML = '<div class="locations-empty">尚未添加地点。点击地图选择位置，也可以使用当前位置或手动输入坐标。</div>';
+      } else {
+        locationsList.innerHTML = subscriptionDraft.targets.map((target, index) => {
+          const coordinates = targetCoordinates(target);
+          const region = targetRegion(target);
+          const active = target.id === uiState.activeTargetId;
+          return `
+            <div class="location-item${active ? " is-active" : ""}${coordinates ? "" : " is-incomplete"}" data-target-id="${escapeHtml(target.id)}">
+              <span class="location-index">${index + 1}</span>
+              <button class="location-focus" type="button" data-location-action="focus">
+                <span class="location-name">${escapeHtml(targetLabel(target))}</span>
+                <span class="location-coords">${coordinates ? `${escapeHtml(coordinates.latitude.toFixed(4))}, ${escapeHtml(coordinates.longitude.toFixed(4))}` : "尚未选择位置"}</span>
+                <span class="location-region ${region ? "" : "is-missing"}">${escapeHtml(region || "区域待识别")}</span>
+              </button>
+              <span class="location-actions">
+                <button type="button" data-location-action="edit">编辑</button>
+                <button class="remove-location" type="button" data-location-action="remove" aria-label="删除地点 ${index + 1}" title="删除地点">×</button>
+              </span>
+            </div>`;
+        }).join("");
       }
-      locationsList.innerHTML = selectedLocations.map((item, index) => `
-        <div class="location-item" data-index="${escapeHtml(index)}">
-          <div>
-            <div class="location-name">${escapeHtml(locationLabel(item))}</div>
-            <div class="location-coords">${escapeHtml(formatCoordinate(item.latitude))}, ${escapeHtml(formatCoordinate(item.longitude))}</div>
-            <div class="location-region ${locationRegion(item) ? "" : "is-missing"}">${escapeHtml(locationRegion(item) || "未识别区域，可能无法匹配海啸预警")}</div>
-          </div>
-          <button class="remove-location" type="button" data-action="remove" aria-label="删除地点">×</button>
-        </div>
-      `).join("");
+      renderTargetMarkers();
+      if (uiState.locationMode === "overview") {
+        mapMode.textContent = count ? "点击地图继续添加，点击标记查看地点" : "点击地图添加监测地点";
+        mapMode.classList.remove("is-selecting");
+      }
     }
 
-    async function addCurrentLocation() {
-      const lat = Number(latInput.value);
-      const lon = Number(lonInput.value);
-      if (!validCoordinate(lat, lon)) return show("请输入有效经纬度", "error");
-      if (geocodePending) {
-        addLocation.disabled = true;
-        await geocodePending;
-        addLocation.disabled = false;
+    function startAddingLocation(initialCoordinates = null) {
+      if (subscriptionDraft.targets.length >= 3) return show("最多添加 3 个监测地点", "error");
+      const target = createTarget();
+      uiState.activeTargetId = target.id;
+      uiState.locationMode = "adding";
+      uiState.editingTarget = target;
+      if (initialCoordinates) {
+        target.point.latitude = initialCoordinates.latitude.toFixed(4);
+        target.point.longitude = initialCoordinates.longitude.toFixed(4);
+        nextRevision(targetCoordinateRevisions, target.id);
+        setMapView(initialCoordinates.latitude, initialCoordinates.longitude);
+        scheduleReverseGeocode(target.id, 0);
       }
-      const locationError = validateLocations([{
-        name: nameInput.value, province: provinceInput.value,
-        city: cityInput.value, district: districtInput.value,
-      }]);
-      if (locationError) return show(locationError, "error");
-      const candidate = {
-        name: nameInput.value, latitude: lat, longitude: lon,
-        province: provinceInput.value, city: cityInput.value, district: districtInput.value,
-      };
-      const duplicateIndex = selectedLocations.findIndex((item, index) =>
-        index !== editingLocationIndex
-        && Number(item.latitude).toFixed(4) === lat.toFixed(4)
-        && Number(item.longitude).toFixed(4) === lon.toFixed(4));
-      if (duplicateIndex >= 0) return show("该坐标已在监测地点中", "warning");
-      if (editingLocationIndex === null && selectedLocations.length >= 3) return show("最多添加 3 个监测地点", "error");
-      if (editingLocationIndex === null) selectedLocations.push(candidate);
-      else selectedLocations[editingLocationIndex] = candidate;
-      const updated = editingLocationIndex !== null;
-      cancelLocationEdit();
       setRegionEditorOpen(false);
-      selectedLocations = normalizeLocations(selectedLocations);
       renderLocations();
-      persistDraft();
-      show(updated ? "已更新监测地点" : "已添加监测地点", "success");
+      renderLocationEditor();
     }
 
-    function cancelLocationEdit() {
-      editingLocationIndex = null;
-      addLocation.textContent = "添加当前地点";
+    function focusTarget(targetId) {
+      const target = targetById(targetId);
+      if (!target) return;
+      if (uiState.locationMode !== "overview" && targetId !== uiState.activeTargetId) {
+        return show("请先完成或取消当前编辑", "warning");
+      }
+      uiState.activeTargetId = targetId;
+      const coordinates = targetCoordinates(target);
+      if (coordinates) setMapView(coordinates.latitude, coordinates.longitude);
+      renderLocations();
+    }
+
+    function editTarget(targetId) {
+      const target = targetById(targetId);
+      if (!target) return;
+      if (uiState.locationMode !== "overview" && targetId !== uiState.activeTargetId) {
+        return show("请先完成或取消当前编辑", "warning");
+      }
+      uiState.activeTargetId = targetId;
+      uiState.locationMode = "editing";
+      uiState.editingTarget = cloneTarget(target);
+      const coordinates = targetCoordinates(target);
+      if (coordinates) setMapView(coordinates.latitude, coordinates.longitude);
+      setRegionEditorOpen(false);
+      renderLocations();
+      renderLocationEditor();
+    }
+
+    function finishLocationEdit() {
+      const target = activeTarget();
+      if (!target) return;
+      const adding = uiState.locationMode === "adding";
+      const index = adding ? subscriptionDraft.targets.length : subscriptionDraft.targets.findIndex((item) => item.id === target.id);
+      const error = validateLocations([target]);
+      if (error) return show(error.replace("监测地点 1", `监测地点 ${index + 1}`), "error");
+      const duplicate = subscriptionDraft.targets.some((item) => item.id !== target.id
+        && targetCoordinates(item)?.latitude.toFixed(4) === targetCoordinates(target)?.latitude.toFixed(4)
+        && targetCoordinates(item)?.longitude.toFixed(4) === targetCoordinates(target)?.longitude.toFixed(4));
+      if (duplicate) return show(`监测地点 ${index + 1} 与其他地点坐标重复`, "error");
+      if (adding) subscriptionDraft.targets.push(target);
+      else subscriptionDraft.targets[index] = target;
+      uiState.locationMode = "overview";
+      uiState.editingTarget = null;
+      setRegionEditorOpen(false);
+      renderLocations();
+      renderLocationEditor();
+      persistDraft();
+    }
+
+    function discardLocationChanges() {
+      const targetId = uiState.activeTargetId;
+      cancelReverseGeocode(targetId);
+      targetCoordinateRevisions.delete(targetId);
+      targetRegionRevisions.delete(targetId);
+      if (uiState.locationMode === "adding") uiState.activeTargetId = null;
+      uiState.locationMode = "overview";
+      uiState.editingTarget = null;
+      setRegionEditorOpen(false);
+      renderLocations();
+      renderLocationEditor();
+    }
+
+    function removeTarget(targetId) {
+      const target = targetById(targetId);
+      if (!target) return;
+      if (uiState.locationMode !== "overview" && targetId !== uiState.activeTargetId) {
+        return show("请先完成或取消当前编辑", "warning");
+      }
+      cancelReverseGeocode(targetId);
+      subscriptionDraft.targets = subscriptionDraft.targets.filter((item) => item.id !== targetId);
+      targetCoordinateRevisions.delete(targetId);
+      targetRegionRevisions.delete(targetId);
+      if (uiState.activeTargetId === targetId) {
+        uiState.activeTargetId = null;
+        uiState.locationMode = "overview";
+        uiState.editingTarget = null;
+        setRegionEditorOpen(false);
+      }
+      renderLocations();
+      renderLocationEditor();
+      persistDraft();
+      show("已从订阅草稿移除地点", "success");
+    }
+
+    function updateActiveTargetCoordinates(latitude, longitude, zoom = 12) {
+      const target = activeTarget();
+      if (!target || !validCoordinate(latitude, longitude)) return;
+      target.point.latitude = latitude.toFixed(4);
+      target.point.longitude = longitude.toFixed(4);
+      nextRevision(targetCoordinateRevisions, target.id);
+      setMapView(latitude, longitude, zoom);
+      renderLocations();
+      renderLocationEditor();
+      if (uiState.locationMode === "adding") nameInput.focus({ preventScroll: true });
+      scheduleReverseGeocode(target.id);
+      persistDraft();
     }
 
     function defaultNotifyBands() {
@@ -980,8 +1421,38 @@
       return (option?.source_groups || []).flatMap((group) => group.sources.map((source) => source.id));
     }
 
+    function alertEntry(category) {
+      return subscriptionDraft.alerts_by_category[category] || null;
+    }
+
+    function alertRule(category) {
+      return alertEntry(category)?.rule || null;
+    }
+
+    function enabledAlertRules() {
+      return Object.values(subscriptionDraft.alerts_by_category)
+        .filter((entry) => entry.enabled)
+        .map((entry) => entry.rule);
+    }
+
+    function alertRuleForPayload(rule) {
+      const result = cloneJson(rule);
+      if (result.category === "earthquake_report") result.min_magnitude = Number(result.min_magnitude);
+      if (result.category === "weather_warning") {
+        result.min_severity = Number(result.min_severity);
+        result.fallback_radius_km = Number(result.fallback_radius_km);
+      }
+      if (result.category === "tsunami") result.min_severity = Number(result.min_severity);
+      if (result.category === "typhoon") result.max_center_distance_km = Number(result.max_center_distance_km);
+      return result;
+    }
+
+    function intensityBands() {
+      return alertRule("earthquake_warning")?.estimated_intensity_bands || [];
+    }
+
     function sourceEnabled(category, source) {
-      const selection = alertRules[category]?.sources;
+      const selection = alertRule(category)?.sources;
       return selection?.mode === "all"
         || selection?.mode === "include" && Array.isArray(selection.ids) && selection.ids.includes(source);
     }
@@ -989,7 +1460,7 @@
     function setSelectedSources(category, ids) {
       const allIds = sourceIds(category);
       const selected = allIds.filter((id) => Array.isArray(ids) && ids.includes(id));
-      alertRules[category].sources = selected.length === allIds.length
+      alertRule(category).sources = selected.length === allIds.length
         ? { mode: "all" }
         : { mode: "include", ids: selected };
     }
@@ -1033,7 +1504,7 @@
 
     function thresholdFields(category, disabled) {
       const state = disabled ? "disabled" : "";
-      const alert = alertRules[category] || optionCategories.find((item) => item.id === category)?.default_alert || {};
+      const alert = alertRule(category) || optionCategories.find((item) => item.id === category)?.default_alert || {};
       if (category === "earthquake_report") return `
         <label class="rule-field">
           <span class="rule-field-title">最低震级</span>
@@ -1071,9 +1542,9 @@
     }
 
     function categoryRuleSummary(category) {
-      const alert = alertRules[category];
-      if (!alert) return "";
-      if (category === "earthquake_warning") return `${notifyBands.length} 段烈度规则`;
+      const alert = alertRule(category);
+      if (!alert || !alertEntry(category)?.enabled) return "";
+      if (category === "earthquake_warning") return `${intensityBands().length} 段烈度规则`;
       if (category === "earthquake_report") return `M ≥ ${Number(alert.min_magnitude).toFixed(1)}`;
       if (category === "weather_warning") return `≥ ${severityLabel(alert.min_severity)} · 回退 ${Number(alert.fallback_radius_km)} km`;
       if (category === "tsunami") return `≥ ${severityLabel(alert.min_severity)}`;
@@ -1104,12 +1575,12 @@
 
     function renderDisasterGroups() {
       disasterGroupsEl.innerHTML = optionCategories.map((category) => {
-        const disabled = !alertRules[category.id];
+        const disabled = !alertEntry(category.id)?.enabled;
         const sourceCount = category.source_groups.reduce((total, group) => total + group.sources.length, 0);
         const enabledCount = category.source_groups.reduce((total, group) => total + group.sources.filter((source) => sourceEnabled(category.id, source.id)).length, 0);
         const expanded = expandedDisasterCategories.has(category.id);
         const filters = thresholdFields(category.id, disabled);
-        const sourceMode = alertRules[category.id]?.sources?.mode;
+        const sourceMode = alertRule(category.id)?.sources?.mode;
         const sourceSummary = sourceMode === "all" ? `全部 ${sourceCount} 个来源` : `已选 ${enabledCount}/${sourceCount} 个来源`;
         const ruleSummary = categoryRuleSummary(category.id);
         return `
@@ -1156,40 +1627,50 @@
       if (generation !== initializationGeneration) return;
       if (!res.ok || !json.success || !Array.isArray(json.data?.categories)) throw new Error(json.message || "无法获取灾害来源");
       optionCategories = json.data.categories;
-      const configured = Array.isArray(draft.alerts) ? draft.alerts : optionCategories.map((category) => category.default_alert);
-      const configuredByCategory = new Map(configured
+      const legacyConfigured = Array.isArray(draft.legacy_alerts) ? draft.legacy_alerts : Array.isArray(draft.alerts) ? draft.alerts : [];
+      const configuredByCategory = new Map(legacyConfigured
         .filter((alert) => alert && typeof alert === "object" && typeof alert.category === "string")
         .map((alert) => [alert.category, alert]));
-      alertRules = Object.fromEntries(optionCategories
-        .filter((category) => configuredByCategory.has(category.id))
-        .map((category) => [category.id, sanitizeAlertRule(category, configuredByCategory.get(category.id))]));
-      const disabled = Array.isArray(draft.disabled_alerts) ? draft.disabled_alerts : [];
-      const disabledByCategory = new Map(disabled
+      const legacyDisabled = Array.isArray(draft.legacy_disabled_alerts) ? draft.legacy_disabled_alerts : Array.isArray(draft.disabled_alerts) ? draft.disabled_alerts : [];
+      const disabledByCategory = new Map(legacyDisabled
         .filter((alert) => alert && typeof alert === "object" && typeof alert.category === "string")
         .map((alert) => [alert.category, alert]));
-      disabledAlertRules = Object.fromEntries(optionCategories
-        .filter((category) => !alertRules[category.id] && disabledByCategory.has(category.id))
-        .map((category) => [category.id, sanitizeAlertRule(category, disabledByCategory.get(category.id))]));
-      const earthquakeBands = alertRules.earthquake_warning?.estimated_intensity_bands;
-      notifyBands = normalizeBands(earthquakeBands || defaultNotifyBands());
-      renderNotifyBands();
+      const savedEntries = draft.alerts_by_category && typeof draft.alerts_by_category === "object"
+        ? draft.alerts_by_category
+        : {};
+      subscriptionDraft.alerts_by_category = Object.fromEntries(optionCategories.map((category) => {
+        const savedEntry = savedEntries[category.id];
+        const legacyRule = configuredByCategory.get(category.id) || disabledByCategory.get(category.id);
+        const candidate = savedEntry?.rule || legacyRule || category.default_alert;
+        const enabled = savedEntry && typeof savedEntry.enabled === "boolean"
+          ? savedEntry.enabled
+          : legacyConfigured.length || legacyDisabled.length
+            ? configuredByCategory.has(category.id)
+            : true;
+        return [category.id, { enabled, rule: sanitizeAlertRule(category, candidate) }];
+      }));
+      delete subscriptionDraft.legacy_alerts;
+      delete subscriptionDraft.legacy_disabled_alerts;
       renderDisasterGroups();
     }
 
     function validateAlertRules() {
-      const alerts = Object.values(alertRules);
+      const alerts = enabledAlertRules();
       if (!alerts.length) return "请至少启用一种灾害类别";
-      const magnitude = Number(alertRules.earthquake_report?.min_magnitude ?? 0);
-      const weatherRadius = Number(alertRules.weather_warning?.fallback_radius_km ?? 1);
-      const typhoonRadius = Number(alertRules.typhoon?.max_center_distance_km ?? 1);
-      const weatherLevel = Number(alertRules.weather_warning?.min_severity ?? 1);
-      const tsunamiLevel = Number(alertRules.tsunami?.min_severity ?? 1);
-      if (!Number.isFinite(magnitude) || magnitude < 0 || magnitude > 10) return "最低震级必须在 0 到 10 之间";
-      if (!Number.isFinite(weatherRadius) || weatherRadius < 1 || weatherRadius > 2000) return "气象预警回退半径必须在 1 到 2000 公里之间";
-      if (!Number.isFinite(typhoonRadius) || typhoonRadius < 1 || typhoonRadius > 3000) return "台风中心最大距离必须在 1 到 3000 公里之间";
-      if (![1, 2, 3, 4].includes(weatherLevel) || ![1, 2, 3, 4].includes(tsunamiLevel)) return "灾害最低级别必须在 1 到 4 之间";
+      const numeric = (value) => String(value ?? "").trim() ? Number(value) : NaN;
+      const magnitude = numeric(alertRule("earthquake_report")?.min_magnitude);
+      const weatherRadius = numeric(alertRule("weather_warning")?.fallback_radius_km);
+      const typhoonRadius = numeric(alertRule("typhoon")?.max_center_distance_km);
+      const weatherLevel = numeric(alertRule("weather_warning")?.min_severity);
+      const tsunamiLevel = numeric(alertRule("tsunami")?.min_severity);
+      if (alertEntry("earthquake_report")?.enabled && (!Number.isFinite(magnitude) || magnitude < 0 || magnitude > 10)) return "最低震级必须在 0 到 10 之间";
+      if (alertEntry("weather_warning")?.enabled && (!Number.isFinite(weatherRadius) || weatherRadius < 1 || weatherRadius > 2000)) return "气象预警回退半径必须在 1 到 2000 公里之间";
+      if (alertEntry("typhoon")?.enabled && (!Number.isFinite(typhoonRadius) || typhoonRadius < 1 || typhoonRadius > 3000)) return "台风中心最大距离必须在 1 到 3000 公里之间";
+      if (alertEntry("weather_warning")?.enabled && ![1, 2, 3, 4].includes(weatherLevel)) return "气象预警最低级别必须在 1 到 4 之间";
+      if (alertEntry("tsunami")?.enabled && ![1, 2, 3, 4].includes(tsunamiLevel)) return "海啸预警最低级别必须在 1 到 4 之间";
       for (const category of optionCategories) {
-        if (alertRules[category.id]?.sources?.mode === "include" && !alertRules[category.id].sources.ids.length) return `${category.label}请至少启用一个来源`;
+        const entry = alertEntry(category.id);
+        if (entry?.enabled && entry.rule.sources?.mode === "include" && !entry.rule.sources.ids.length) return `${category.label}请至少启用一个来源`;
       }
       return "";
     }
@@ -1221,12 +1702,18 @@
     }
 
     function validateLocations(locations) {
-      for (const location of locations) {
+      const used = new Set();
+      for (const [index, location] of locations.entries()) {
+        const coordinates = targetCoordinates(location);
+        if (!coordinates) return `监测地点 ${index + 1} 尚未选择有效位置`;
+        const coordinateKey = `${coordinates.latitude.toFixed(4)},${coordinates.longitude.toFixed(4)}`;
+        if (used.has(coordinateKey)) return `监测地点 ${index + 1} 与其他地点坐标重复`;
+        used.add(coordinateKey);
         for (const [label, value] of [
-          ["名称", location.name], ["省/州", location.province],
-          ["城市", location.city], ["区/县", location.district],
+          ["名称", location.label], ["省/州", location.region?.province],
+          ["城市", location.region?.city], ["区/县", location.region?.district],
         ]) {
-          if (String(value || "").trim().length > 80) return `监测地点${label}最多 80 个字符`;
+          if ([...String(value || "").trim()].length > 80) return `监测地点 ${index + 1} 的${label}最多 80 个字符`;
         }
       }
       return "";
@@ -1253,13 +1740,16 @@
 
     function renderNotifyBands() {
       if (!notifyBandsEl) return;
-      notifyBands = normalizeBands(notifyBands);
-      const state = alertRules.earthquake_warning ? "" : "disabled";
-      notifyBandsEl.innerHTML = notifyBands.map((band, index) => `
+      const bands = intensityBands().map((band) => ({
+        min: band.min ?? "",
+        max: band.max ?? "",
+        level: String(band.interruption_level ?? band.level ?? "passive").toLowerCase(),
+      }));
+      const state = alertEntry("earthquake_warning")?.enabled ? "" : "disabled";
+      notifyBandsEl.innerHTML = bands.map((band, index) => `
         <div class="intensity-rule" data-index="${escapeHtml(index)}">
           <div class="intensity-rule-header">
             <span class="intensity-rule-name">规则 ${escapeHtml(index + 1)}</span>
-            <button class="remove-intensity-rule" type="button" data-action="remove-rule" aria-label="删除规则 ${escapeHtml(index + 1)}" title="删除规则" ${state}>×</button>
           </div>
           <div class="intensity-rule-fields">
             <label class="rule-field">
@@ -1277,20 +1767,31 @@
               </select>
             </label>
           </div>
+          <button class="remove-intensity-rule" type="button" data-action="remove-rule" aria-label="删除规则 ${escapeHtml(index + 1)}" title="删除规则" ${state}>×</button>
         </div>
       `).join("");
     }
 
     function collectBands() {
-      const bands = [];
-      if (!notifyBandsEl) return bands;
-      notifyBandsEl.querySelectorAll(".intensity-rule").forEach((row) => {
-        const level = row.querySelector(".band-select").value;
-        const min = Number(row.querySelector(".band-min").value);
-        const max = Number(row.querySelector(".band-max").value);
-        bands.push({ min, max, level, label: levelLabel(level) });
+      return intensityBands().map((band) => {
+        const level = String(band.interruption_level ?? band.level ?? "").toLowerCase();
+        const minRaw = String(band.min ?? "").trim();
+        const maxRaw = String(band.max ?? "").trim();
+        const min = minRaw ? Number(minRaw) : NaN;
+        const max = maxRaw ? Number(maxRaw) : NaN;
+        return { min, max, level, label: levelLabel(level) };
       });
-      return bands;
+    }
+
+    function updateBandDraft(control) {
+      const row = control.closest(".intensity-rule");
+      const band = intensityBands()[Number(row?.dataset.index)];
+      if (!band) return;
+      if (control.classList.contains("band-min")) band.min = control.value;
+      if (control.classList.contains("band-max")) band.max = control.value;
+      if (control.classList.contains("band-select")) band.interruption_level = control.value;
+      setNotifyWarning(validateBands(collectBands()));
+      persistDraft();
     }
 
     function commitBands(showWarning = false) {
@@ -1298,9 +1799,9 @@
       const error = validateBands(bands);
       setNotifyWarning(error || "");
       if (error) return false;
-      notifyBands = bands.sort((left, right) => left.min - right.min);
-      if (alertRules.earthquake_warning) {
-        alertRules.earthquake_warning.estimated_intensity_bands = notifyBands.map((band) => ({
+      const rule = alertRule("earthquake_warning");
+      if (rule) {
+        rule.estimated_intensity_bands = bands.sort((left, right) => left.min - right.min).map((band) => ({
           min: band.min, max: band.max, interruption_level: band.level,
         }));
       }
@@ -1309,60 +1810,106 @@
       return true;
     }
 
-    function syncNotifyBands() {
-      if (!alertRules.earthquake_warning) return;
-      alertRules.earthquake_warning.estimated_intensity_bands = notifyBands.map((band) => ({
-        min: band.min, max: band.max, interruption_level: band.level,
-      }));
+    function draftForStorage() {
+      return {
+        schema_version: 3,
+        bark_url: subscriptionDraft.bark_url,
+        targets: subscriptionDraft.targets.map((target) => ({
+          id: target.id,
+          label: String(target.label || ""),
+          point: {
+            latitude: String(target.point?.latitude ?? ""),
+            longitude: String(target.point?.longitude ?? ""),
+          },
+          region: {
+            province: String(target.region?.province || ""),
+            city: String(target.region?.city || ""),
+            district: String(target.region?.district || ""),
+          },
+        })),
+        alerts_by_category: cloneJson(subscriptionDraft.alerts_by_category),
+      };
+    }
+
+    function draftSignature() {
+      return JSON.stringify(draftForStorage());
+    }
+
+    function updateDraftStatus() {
+      if (!lastSubmittedSignature) {
+        draftStatus.textContent = "配置草稿保存在当前浏览器；Bark Key 不会保存。";
+      } else if (draftSignature() === lastSubmittedSignature && currentDestinationIdentity() === lastSubmittedIdentity) {
+        draftStatus.textContent = "本浏览器中的配置已提交。";
+      } else {
+        draftStatus.textContent = "有尚未提交的配置更改。";
+      }
     }
 
     function persistDraft() {
-      const draft = {
-        bark_url: barkUrlInput.value,
-        current: {
-          name: nameInput.value.trim(), latitude: Number(latInput.value), longitude: Number(lonInput.value),
-          province: provinceInput.value.trim(), city: cityInput.value.trim(), district: districtInput.value.trim(),
-        },
-        targets: selectedLocations.map((location) => ({
-          label: location.name,
-          point: { latitude: location.latitude, longitude: location.longitude },
-          region: { province: location.province, city: location.city, district: location.district },
-        })),
-        alerts: Object.values(alertRules),
-        disabled_alerts: Object.values(disabledAlertRules),
-      };
-      localStorage.setItem(storageKey, JSON.stringify(draft));
+      updateDraftStatus();
+      if (persistTimer) clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => {
+        try { localStorage.setItem(storageKey, draftSignature()); } catch {}
+        persistTimer = null;
+      }, 150);
+    }
+
+    function flushDraft() {
+      if (persistTimer) clearTimeout(persistTimer);
+      try { localStorage.setItem(storageKey, draftSignature()); } catch {}
+      persistTimer = null;
+    }
+
+    function currentDestinationIdentity() {
+      return `${barkUrlInput.value}\n${barkInput.value.trim()}`;
     }
 
     function restoreDraft() {
-      const draft = safeJson(localStorage.getItem(storageKey)) || {};
-      alertRules = {};
-      disabledAlertRules = {};
-      const draftTargets = Array.isArray(draft.targets) ? draft.targets : [];
-      selectedLocations = normalizeLocations(draftTargets
+      const current = safeJson(localStorage.getItem(storageKey));
+      const legacy = safeJson(localStorage.getItem(legacyStorageKey));
+      const source = current?.schema_version === 3 ? current : legacy || {};
+      const draft = createEmptyDraft();
+      draft.bark_url = typeof source.bark_url === "string" ? source.bark_url : "";
+      const legacyCurrent = source.current && typeof source.current === "object" ? source.current : null;
+      const sourceTargets = Array.isArray(source.targets) && source.targets.length
+        ? source.targets
+        : legacyCurrent && validCoordinate(Number(legacyCurrent.latitude), Number(legacyCurrent.longitude))
+          ? [{
+              label: legacyCurrent.name,
+              point: { latitude: legacyCurrent.latitude, longitude: legacyCurrent.longitude },
+              region: { province: legacyCurrent.province, city: legacyCurrent.city, district: legacyCurrent.district },
+            }]
+          : [];
+      draft.targets = sourceTargets.slice(0, 3)
         .filter((target) => target && typeof target === "object")
         .map((target) => ({
-        name: target.label,
-        latitude: target.point?.latitude,
-        longitude: target.point?.longitude,
-        province: target.region?.province,
-        city: target.region?.city,
-        district: target.region?.district,
-      })));
-      notifyBands = defaultNotifyBands();
-      const current = draft.current || selectedLocations[0];
-      if (current) {
-        nameInput.value = current.name || "";
-        provinceInput.value = current.province || "";
-        cityInput.value = current.city || "";
-        districtInput.value = current.district || "";
-        const region = [current.province, current.city, current.district].filter(Boolean);
-        setRegionStatus(region.length ? region.join(" · ") : "选点后自动解析", region.length ? "ready" : "");
-        setPosition(current.latitude, current.longitude, 10);
+          id: typeof target.id === "string" && target.id ? target.id : createTarget().id,
+          label: String(target.label || ""),
+          point: {
+            latitude: String(target.point?.latitude ?? ""),
+            longitude: String(target.point?.longitude ?? ""),
+          },
+          region: {
+            province: String(target.region?.province || ""),
+            city: String(target.region?.city || ""),
+            district: String(target.region?.district || ""),
+          },
+        }));
+      draft.alerts_by_category = source.alerts_by_category && typeof source.alerts_by_category === "object"
+        ? cloneJson(source.alerts_by_category)
+        : {};
+      draft.legacy_alerts = Array.isArray(source.alerts) ? cloneJson(source.alerts) : [];
+      draft.legacy_disabled_alerts = Array.isArray(source.disabled_alerts) ? cloneJson(source.disabled_alerts) : [];
+      subscriptionDraft = draft;
+      const incompleteTarget = draft.targets.find((target) => !targetCoordinates(target));
+      if (incompleteTarget) {
+        uiState.activeTargetId = incompleteTarget.id;
+        uiState.locationMode = "editing";
+        uiState.editingTarget = cloneTarget(incompleteTarget);
       }
       renderLocations();
-      renderNotifyBands();
-      return draft;
+      renderLocationEditor();
+      return { ...source, ...draft };
     }
 
     async function loadBarkUrls(draft, generation) {
@@ -1378,10 +1925,9 @@
       const removedSavedUrl = savedUrl && !barkUrls.includes(savedUrl);
       barkUrlInput.innerHTML = `${removedSavedUrl ? '<option value="">请选择 Bark URL</option>' : ""}${barkUrls.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
       barkUrlInput.value = removedSavedUrl ? "" : savedUrl && barkUrls.includes(savedUrl) ? savedUrl : barkUrls[0];
+      subscriptionDraft.bark_url = barkUrlInput.value;
       barkUrlInput.disabled = false;
-      const hideBarkUrl = barkUrls.length === 1 && !removedSavedUrl;
-      barkUrlField.style.display = hideBarkUrl ? "none" : "";
-      identityGrid.classList.toggle("single", hideBarkUrl);
+      barkUrlField.style.display = "";
     }
 
     function initializeConfiguration(draft) {
@@ -1395,6 +1941,9 @@
           if (generation !== initializationGeneration) return;
           configurationReady = true;
           setSubscriptionRequestInFlight(false);
+          fitTargetMarkers();
+          updateDraftStatus();
+          persistDraft();
           dismissPersistentToasts();
         })
         .catch((error) => {
@@ -1422,36 +1971,43 @@
       return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
     }
 
-    if (map) {
-      map.on("click", (event) => {
-        setPosition(event.latlng.lat, event.latlng.lng);
-        scheduleReverseGeocode(event.latlng.lat, event.latlng.lng);
-        persistDraft();
-      });
-    }
+    if (map) map.on("click", (event) => {
+      if (uiState.locationMode === "overview") {
+        return startAddingLocation({ latitude: event.latlng.lat, longitude: event.latlng.lng });
+      }
+      updateActiveTargetCoordinates(event.latlng.lat, event.latlng.lng);
+    });
 
-    locate.addEventListener("click", () => {
+    startAddLocation.addEventListener("click", () => startAddingLocation());
+    finishLocation.addEventListener("click", finishLocationEdit);
+    discardLocationEdit.addEventListener("click", discardLocationChanges);
+
+    function locateCurrentPosition() {
       if (!navigator.geolocation) return show("当前浏览器不支持定位", "error");
-      locate.disabled = true;
+      if (uiState.locationMode === "overview") startAddingLocation();
+      if (locate) locate.disabled = true;
       show("正在获取定位...", "info");
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setPosition(pos.coords.latitude, pos.coords.longitude, 12);
-          scheduleReverseGeocode(pos.coords.latitude, pos.coords.longitude, 0);
-          if (!nameInput.value.trim()) nameInput.value = "当前位置";
-          persistDraft();
+        (position) => {
+          updateActiveTargetCoordinates(position.coords.latitude, position.coords.longitude);
+          const target = activeTarget();
+          if (target && !target.label.trim()) {
+            target.label = "当前位置";
+            renderLocations();
+            renderLocationEditor();
+            persistDraft();
+          }
           show("定位成功", "success");
-          locate.disabled = false;
+          if (locate) locate.disabled = false;
         },
         () => {
           show("定位失败，请点击地图或输入经纬度", "error");
-          locate.disabled = false;
+          if (locate) locate.disabled = false;
         },
         { enableHighAccuracy: true, timeout: 9000 }
       );
-    });
+    }
 
-    addLocation.addEventListener("click", addCurrentLocation);
     editRegion.setAttribute("aria-controls", "region-editor");
     editRegion.setAttribute("aria-expanded", "false");
     editRegion.addEventListener("click", () => setRegionEditorOpen(regionEditor.hidden));
@@ -1459,53 +2015,69 @@
     locationsList.addEventListener("click", (event) => {
       const row = event.target.closest(".location-item");
       if (!row) return;
-      const index = Number(row.dataset.index);
-      if (event.target.closest("[data-action='remove']")) {
-        selectedLocations.splice(index, 1);
-        if (editingLocationIndex === index) cancelLocationEdit();
-        else if (editingLocationIndex !== null && editingLocationIndex > index) editingLocationIndex -= 1;
-        renderLocations();
-        persistDraft();
-        return show("已删除监测地点", "success");
-      }
-      const item = selectedLocations[index];
-      if (!item) return;
-      nameInput.value = item.name || "";
-      provinceInput.value = item.province || "";
-      cityInput.value = item.city || "";
-      districtInput.value = item.district || "";
-      const region = [item.province, item.city, item.district].filter(Boolean);
-      setRegionStatus(region.length ? region.join(" · ") : "未填写，可重新选点解析", region.length ? "ready" : "");
-      setRegionEditorOpen(false);
-      setPosition(item.latitude, item.longitude, 12);
-      editingLocationIndex = index;
-      addLocation.textContent = "更新监测地点";
-      persistDraft();
+      const targetId = row.dataset.targetId;
+      const action = event.target.closest("[data-location-action]")?.dataset.locationAction;
+      if (action === "remove") return removeTarget(targetId);
+      if (action === "edit") return editTarget(targetId);
+      if (action === "focus") return focusTarget(targetId);
     });
 
-    [nameInput, latInput, lonInput, provinceInput, cityInput, districtInput].forEach((input) => input.addEventListener("input", persistDraft));
+    nameInput.addEventListener("input", () => {
+      const target = activeTarget();
+      if (!target) return;
+      target.label = nameInput.value;
+      renderLocations();
+      persistDraft();
+    });
     [provinceInput, cityInput, districtInput].forEach((input) => input.addEventListener("input", () => {
-      regionEditRevision += 1;
-      const region = [provinceInput.value, cityInput.value, districtInput.value].filter((value) => value.trim());
-      setRegionStatus(region.length ? "已手动修改" : "选点后自动解析", region.length ? "ready" : "");
+      const target = activeTarget();
+      if (!target) return;
+      target.region.province = provinceInput.value;
+      target.region.city = cityInput.value;
+      target.region.district = districtInput.value;
+      nextRevision(targetRegionRevisions, target.id);
+      cancelReverseGeocode(target.id);
+      const region = targetRegion(target);
+      setRegionStatus(region ? "已手动修改" : "可手动填写行政区", region ? "ready" : "");
+      renderLocations();
+      persistDraft();
+    }));
+    [latInput, lonInput].forEach((input) => input.addEventListener("input", () => {
+      const target = activeTarget();
+      if (!target) return;
+      target.point.latitude = latInput.value;
+      target.point.longitude = lonInput.value;
+      nextRevision(targetCoordinateRevisions, target.id);
+      cancelReverseGeocode(target.id);
+      renderLocations();
+      renderLocationEditor();
+      persistDraft();
     }));
     [latInput, lonInput].forEach((input) => input.addEventListener("change", () => {
-      const lat = Number(latInput.value);
-      const lon = Number(lonInput.value);
-      if (validCoordinate(lat, lon)) scheduleReverseGeocode(lat, lon);
+      const target = activeTarget();
+      if (!target) return;
+      const coordinates = targetCoordinates(target);
+      if (coordinates) {
+        setMapView(coordinates.latitude, coordinates.longitude);
+        scheduleReverseGeocode(target.id);
+      }
     }));
-    barkUrlInput.addEventListener("change", persistDraft);
+    barkUrlInput.addEventListener("change", () => {
+      subscriptionDraft.bark_url = barkUrlInput.value;
+      persistDraft();
+    });
+    barkInput.addEventListener("input", updateDraftStatus);
     retryConfig.addEventListener("click", () => {
       show("正在重新加载订阅配置...", "info");
-      initializeConfiguration(restoreDraft());
+      initializeConfiguration(subscriptionDraft);
     });
 
     resetAlertRules.addEventListener("click", () => {
       if (!configurationReady) return show("订阅配置尚未加载完成", "error");
       if (!confirm("恢复所有预警类型和规则为默认设置？监测地点和接收设备不会改变。")) return;
-      alertRules = Object.fromEntries(optionCategories.map((category) => [category.id, cloneJson(category.default_alert)]));
-      disabledAlertRules = {};
-      notifyBands = normalizeBands(alertRules.earthquake_warning?.estimated_intensity_bands || defaultNotifyBands());
+      subscriptionDraft.alerts_by_category = Object.fromEntries(optionCategories.map((category) => [
+        category.id, { enabled: true, rule: cloneJson(category.default_alert) },
+      ]));
       setNotifyWarning("");
       renderDisasterGroups();
       persistDraft();
@@ -1538,19 +2110,23 @@
       const intensityAction = event.target.closest("[data-intensity-action]");
       if (intensityAction) {
         if (!commitBands()) return;
+        const rule = alertRule("earthquake_warning");
+        if (!rule) return;
         if (intensityAction.dataset.intensityAction === "reset") {
-          notifyBands = defaultNotifyBands();
-          syncNotifyBands();
+          rule.estimated_intensity_bands = defaultNotifyBands().map((band) => ({
+            min: band.min, max: band.max, interruption_level: band.level,
+          }));
           setNotifyWarning("");
           renderDisasterGroups();
           persistDraft();
           return;
         }
-        const used = new Set(notifyBands.map((band) => band.level));
+        const bands = normalizeBands(rule.estimated_intensity_bands);
+        const used = new Set(bands.map((band) => band.level));
         const level = notifyLevelOrder.find((item) => !used.has(item));
         if (!level) return setNotifyWarning("通知级别规则最多 3 条");
-        notifyBands.push({ min: level === "passive" ? 0 : level === "active" ? 2 : 3, max: level === "critical" ? 7 : level === "active" ? 2 : 1, level, label: levelLabel(level) });
-        syncNotifyBands();
+        bands.push({ min: level === "passive" ? 0 : level === "active" ? 2 : 3, max: level === "critical" ? 7 : level === "active" ? 2 : 1, level, label: levelLabel(level) });
+        rule.estimated_intensity_bands = bands.map((band) => ({ min: band.min, max: band.max, interruption_level: band.level }));
         renderDisasterGroups();
         persistDraft();
         return;
@@ -1558,10 +2134,10 @@
 
       const removeRule = event.target.closest("[data-action='remove-rule']");
       if (removeRule) {
-        notifyBands = collectBands().filter((band) => Number.isInteger(band.min) && Number.isInteger(band.max));
-        notifyBands.splice(Number(removeRule.closest(".intensity-rule").dataset.index), 1);
-        if (!notifyBands.length) notifyBands = defaultNotifyBands();
-        syncNotifyBands();
+        const bands = collectBands().filter((band) => Number.isInteger(band.min) && Number.isInteger(band.max));
+        bands.splice(Number(removeRule.closest(".intensity-rule").dataset.index), 1);
+        const nextBands = bands.length ? bands : defaultNotifyBands();
+        alertRule("earthquake_warning").estimated_intensity_bands = nextBands.map((band) => ({ min: band.min, max: band.max, interruption_level: band.level }));
         renderDisasterGroups();
         persistDraft();
         return;
@@ -1572,7 +2148,7 @@
       const sourceSection = bulkAction.closest("[data-source-group]");
       const enabled = bulkAction.dataset.sourceAction === "enable";
       const category = sourceSection?.closest("[data-category-card]")?.dataset.categoryCard;
-      if (!category || !alertRules[category]) return;
+      if (!category || !alertEntry(category)?.enabled) return;
       const groupIds = new Set([...sourceSection.querySelectorAll("[data-source]")].map((input) => input.dataset.source));
       const selected = sourceIds(category).filter((id) => sourceEnabled(category, id));
       setSelectedSources(category, enabled
@@ -1582,86 +2158,70 @@
       persistDraft();
     });
     disasterGroupsEl.addEventListener("change", (event) => {
+      if (event.target.closest("#notify-bands")) {
+        updateBandDraft(event.target);
+        return;
+      }
       const category = event.target.dataset.category;
       const source = event.target.dataset.source;
       const rule = event.target.dataset.rule;
       if (category) {
-        if (event.target.checked) {
-          const option = optionCategories.find((item) => item.id === category);
-          const restored = disabledAlertRules[category] || option?.default_alert;
-          if (restored) alertRules[category] = cloneJson(restored);
-          delete disabledAlertRules[category];
-          if (category === "earthquake_warning" && alertRules[category]) {
-            notifyBands = normalizeBands(alertRules[category].estimated_intensity_bands);
-            syncNotifyBands();
-            renderNotifyBands();
-            setNotifyWarning("");
-          }
-        } else {
-          if (category === "earthquake_warning" && !commitBands()) {
-            event.target.checked = true;
-            return;
-          }
-          disabledAlertRules[category] = cloneJson(alertRules[category]);
-          delete alertRules[category];
+        if (category === "earthquake_warning" && event.target.checked && !commitBands()) {
+          event.target.checked = true;
+          return;
         }
+        alertEntry(category).enabled = event.target.checked;
+        setNotifyWarning("");
         renderDisasterGroups();
       }
       if (source) {
         const categoryId = event.target.closest("[data-category-card]")?.dataset.categoryCard;
-        const alert = alertRules[categoryId];
-        if (!alert) return;
+        if (!alertEntry(categoryId)?.enabled) return;
         const ids = sourceIds(categoryId).filter((id) => id === source ? event.target.checked : sourceEnabled(categoryId, id));
         setSelectedSources(categoryId, ids);
         renderDisasterGroups();
       }
       if (rule) {
         const categoryId = event.target.closest("[data-category-card]")?.dataset.categoryCard;
-        if (alertRules[categoryId]) {
-          alertRules[categoryId][rule] = Number(event.target.value);
+        const alert = alertRule(categoryId);
+        if (alertEntry(categoryId)?.enabled && alert) {
+          alert[rule] = event.target.value;
           renderDisasterGroups();
         }
       }
       persistDraft();
     });
-    disasterGroupsEl.addEventListener("change", (event) => {
-      if (!event.target.closest("#notify-bands")) return;
-      commitBands(true);
+    disasterGroupsEl.addEventListener("input", (event) => {
+      if (event.target.closest("#notify-bands .band-min, #notify-bands .band-max")) updateBandDraft(event.target);
     });
     disasterGroupsEl.addEventListener("blur", (event) => {
-      if (event.target.closest("#notify-bands .band-min, #notify-bands .band-max")) commitBands(true);
+      if (event.target.closest("#notify-bands .band-min, #notify-bands .band-max")) setNotifyWarning(validateBands(collectBands()));
     }, true);
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!configurationReady) return show("订阅配置尚未加载完成", "error");
-      if (alertRules.earthquake_warning && !commitBands()) return show("请修正通知级别规则", "error");
+      if (alertEntry("earthquake_warning")?.enabled && !commitBands()) return show("请修正通知级别规则", "error");
       const alertRuleError = validateAlertRules();
       if (alertRuleError) return show(alertRuleError, "error");
-      let locations = normalizeLocations(selectedLocations);
-      if (!locations.length) {
-        const lat = Number(latInput.value);
-        const lon = Number(lonInput.value);
-        if (validCoordinate(lat, lon)) locations = normalizeLocations([{
-          name: nameInput.value, latitude: lat, longitude: lon,
-          province: provinceInput.value, city: cityInput.value, district: districtInput.value,
-        }]);
-      }
-      if (!locations.length) return show("请至少添加一个监测地点", "error");
-      const locationError = validateLocations(locations);
+      if (!subscriptionDraft.targets.length) return show("请至少添加一个监测地点", "error");
+      const locationError = validateLocations(subscriptionDraft.targets);
       if (locationError) return show(locationError, "error");
       const barkID = barkInput.value.trim();
       if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("Bark Key 只能包含字母和数字", "error");
       const barkUrl = barkUrlInput.value;
       if (!barkUrls.includes(barkUrl)) return show("请选择有效的 Bark URL", "error");
+      const submittedSignature = draftSignature();
       const payload = {
         destination: { type: "bark", base_url: barkUrl, device_key: barkID },
-        targets: locations.map((location) => ({
-          label: location.name,
-          point: { latitude: location.latitude, longitude: location.longitude },
-          region: { province: location.province, city: location.city, district: location.district },
+        targets: subscriptionDraft.targets.map((target) => ({
+          label: target.label.trim(),
+          point: { latitude: Number(target.point.latitude), longitude: Number(target.point.longitude) },
+          region: {
+            province: target.region.province.trim(), city: target.region.city.trim(), district: target.region.district.trim(),
+          },
         })),
-        alerts: Object.values(alertRules),
+        alerts: enabledAlertRules().map(alertRuleForPayload),
       };
       setSubscriptionRequestInFlight(true);
       show("正在覆盖保存订阅...", "info");
@@ -1673,9 +2233,10 @@
         });
         const json = await parseApiResponse(res);
         if (!res.ok || !json.success) throw new Error(json.message || "保存失败");
-        selectedLocations = locations;
-        persistDraft();
-        renderLocations();
+        lastSubmittedSignature = submittedSignature;
+        lastSubmittedIdentity = currentDestinationIdentity();
+        updateDraftStatus();
+        flushDraft();
         show("订阅已覆盖保存", "success");
         refreshStats();
       } catch (error) {
@@ -1688,7 +2249,8 @@
     unsubscribe.addEventListener("click", async () => {
       const barkID = barkInput.value.trim();
       if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("请填写有效的 Bark Key", "error");
-      if (!confirm("确定取消订阅？")) return;
+      if (!barkUrls.includes(barkUrlInput.value)) return show("请选择有效的 Bark URL", "error");
+      if (!confirm("确定删除该 Bark 服务与 Key 对应的服务端订阅？当前浏览器中的配置草稿会保留。")) return;
       if (subscriptionRequestInFlight) return;
       setSubscriptionRequestInFlight(true);
       show("正在取消订阅...", "info");
@@ -1702,21 +2264,10 @@
         });
         const json = await parseApiResponse(res);
         if (!res.ok || !json.success) throw new Error(json.message || "取消失败");
-        localStorage.removeItem(storageKey);
-        selectedLocations = [];
-        cancelLocationEdit();
-        notifyBands = defaultNotifyBands();
-        alertRules = Object.fromEntries(optionCategories.map((category) => [category.id, cloneJson(category.default_alert)]));
-        disabledAlertRules = {};
-        renderLocations();
-        renderNotifyBands();
-        renderDisasterGroups();
-        form.reset();
-        setRegionStatus("选点后自动解析");
-        setRegionEditorOpen(false);
-        barkUrlInput.value = barkUrls[0] || "";
-        if (map && marker) { map.removeLayer(marker); marker = null; }
-        show("已取消订阅", "success");
+        lastSubmittedSignature = "";
+        lastSubmittedIdentity = "";
+        updateDraftStatus();
+        show("已删除服务端订阅；浏览器配置草稿已保留", "success");
         refreshStats();
       } catch (error) {
         show(error.message || "网络请求失败", "error");
