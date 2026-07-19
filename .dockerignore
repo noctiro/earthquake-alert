@@ -1,0 +1,10 @@
+*
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!benches/
+!benches/**
+!src/
+!src/**
+!web/
+!web/**

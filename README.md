@@ -2,7 +2,7 @@
 
 通过 Bark 接收地震、气象、海啸和台风信息。服务提供网页订阅界面，也可以直接调用 HTTP API。
 
-示例：<http://alert.noctiro.moe>
+示例：<https://alert.noctiro.moe>
 
 ## 功能
 
@@ -20,20 +20,15 @@
 
 ## 部署
 
-需要 Rust `1.97` 或更高版本。
+### Docker Compose（推荐）
+
+克隆仓库并准备配置：
 
 ```bash
+git clone https://github.com/noctiro/disaster-alert.git
+cd disaster-alert
 cp .env.example .env
-cargo build --release
-./target/release/disaster-alert
 ```
-
-启动前必须设置：
-
-- `ALERT_DETAIL_BASE_URL`：手机可以访问的服务地址。生产环境必须使用 HTTPS
-- `ALERT_SIGNING_KEY`：用于保护通知详情链接的私钥
-
-对外提供服务前，实例部署者还应阅读“使用与部署责任”，并主动设置 `INSTANCE_TERMS_ACCEPTED=true`。未设置该变量不会阻止服务启动，但实例不会接受新增或覆盖订阅。
 
 生成签名私钥：
 
@@ -41,37 +36,96 @@ cargo build --release
 openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n'
 ```
 
-将结果写入 `.env`：
+编辑 `.env`，填写通知详情页访问地址和上一步生成的私钥：
 
 ```dotenv
-INSTANCE_TERMS_ACCEPTED=true
 ALERT_DETAIL_BASE_URL=https://alerts.example.com
 ALERT_SIGNING_KEY=生成的私钥
 ```
 
-不要提交真实的 `.env` 或将 `ALERT_SIGNING_KEY` 输出到日志。修改签名私钥后，之前发送的详情链接会失效。
+阅读[使用与部署责任](#使用与部署责任)后，如确认接受实例运营责任，再设置：
 
-`INSTANCE_TERMS_ACCEPTED` 默认为 `false`。未确认时服务仍会启动，订阅页面每次加载都会显示实例配置提醒，`POST /api/subscribe` 会返回 `503 Service Unavailable`，网页保存按钮也会保持禁用。该门禁只阻止新增或覆盖订阅：已有订阅和后台任务仍会继续处理，`DELETE /api/unsubscribe` 保持可用，以便用户删除已有订阅。网页中的“继续查看”只关闭当前弹窗，不会代表部署者确认，也不会修改服务端配置。只有实例运营者阅读并接受下方责任声明后，才应在部署环境中将该变量设为 `true` 并重启服务。
+```dotenv
+INSTANCE_TERMS_ACCEPTED=true
+```
 
-服务默认监听 `0.0.0.0:30010`。浏览器访问 `http://服务器地址:30010` 即可打开订阅页面。生产环境建议监听 `127.0.0.1`，再通过反向代理提供 HTTPS。
+启动服务：
 
-数据库保存在 `DB_PATH` 目录。部署时必须持久化整个目录，同一目录只能由一个服务实例使用。
+```bash
+docker compose up -d --build
+```
 
-通知详情 URL 包含访问凭据。反向代理、CDN、WAF、APM 和分析系统不应记录 `/incidents/` 路径的完整 URL。
+检查状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f disaster-alert
+```
+
+可选应用配置见[配置](#配置)。
+
+### 手动部署
+
+不使用 Docker 时，需要 Rust `1.97` 或更高版本。先准备配置：
+
+```bash
+cp .env.example .env
+```
+
+在 `.env` 中填写 `ALERT_DETAIL_BASE_URL`、`ALERT_SIGNING_KEY` 和其他需要的配置，然后构建并启动：
+
+```bash
+cargo build --release
+./target/release/disaster-alert
+```
+
+生产环境建议监听 `127.0.0.1`，再通过反向代理提供 HTTPS。
+
+## 维护与迁移
+
+### 更新 Docker Compose 部署
+
+```bash
+git pull --ff-only
+docker compose up -d --build
+```
+
+数据库保存在 Docker 命名卷中。`docker compose down` 不会删除数据库；`docker compose down -v` 会永久删除数据库。
+
+数据库目录只能由一个应用实例使用，不要增加 `disaster-alert` 服务的副本数。Compose 会等待服务优雅退出并完成数据库刷盘。
+
+### 迁移旧版 sled 数据
+
+以下步骤适用于手动部署。只迁移旧版订阅时，先编译迁移工具：
+
+```bash
+cargo build --release --features migration --bin disaster-alert-migrate
+```
+
+停止旧服务后执行：
+
+```bash
+./target/release/disaster-alert-migrate \
+  ./data/disaster-alert.db/ \
+  ./data/disaster-alert.fjall
+```
+
+迁移完成后，将 `DB_PATH` 指向新目录。迁移工具只迁移订阅，不迁移旧通知任务和历史记录。迁移期间不要同时运行新旧服务。
 
 ## 配置
 
 应用会读取当前工作目录下的 `.env`。进程环境变量优先于 `.env`；完整示例见 [.env.example](.env.example)。
 
-### 服务
+### 应用服务
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `INSTANCE_TERMS_ACCEPTED` | `false` | 部署者是否已明确接受本 README 的“使用与部署责任”；为 `false` 时禁止新增或覆盖订阅 |
+| `INSTANCE_TERMS_ACCEPTED` | `false` | 为 `false` 时拒绝新增和覆盖订阅，已有任务与取消订阅不受影响。设为 `true` 前须阅读“使用与部署责任” |
 | `SERVER_HOST` | `0.0.0.0` | 监听地址 |
 | `SERVER_PORT` | `30010` | 服务端口 |
+| `SERVER_PUBLISH_HOST` | `127.0.0.1` | Docker Compose 发布端口时使用的宿主机地址；不使用 Compose 时忽略 |
 | `ALLOWED_ORIGINS` | 空 | 允许访问 API 的前端 Origin，多个值用逗号分隔 |
-| `DB_PATH` | `./data/disaster-alert.fjall` | 数据库目录 |
+| `DB_PATH` | `./data/disaster-alert.fjall` | 数据库目录；同一目录只能由一个应用实例使用 |
 | `SHUTDOWN_TIMEOUT_SECONDS` | `15` | 服务关闭时的最长等待时间，范围 `1..=300` 秒 |
 
 ### Bark
@@ -83,7 +137,7 @@ ALERT_SIGNING_KEY=生成的私钥
 | `BARK_VOLUME` | `10` | 通知音量，范围 `0..=10` |
 | `BARK_GROUP` | `灾害预警` | Bark 通知分组名 |
 | `BARK_CALL` | `true` | 是否为非静默灾害通知启用 Bark 通话级提醒 |
-| `ALERT_DETAIL_BASE_URL` | 必填 | 通知详情页的公网根地址 |
+| `ALERT_DETAIL_BASE_URL` | 必填 | Bark 客户端能够访问的通知详情页根地址，部署时使用 HTTPS |
 | `ALERT_SIGNING_KEY` | 必填 | 32 字节、无填充的 URL-safe Base64 私钥 |
 
 `BARK_URL_ALLOWLIST` 支持域名、IP、端口和反向代理子路径，例如：
@@ -108,7 +162,16 @@ BARK_URL_ALLOWLIST=https://api.day.app,http://192.168.1.10:8080,https://example.
 | `P_WAVE_KM_S` | `6.0` | P 波估算速度，单位 km/s |
 | `S_WAVE_KM_S` | `3.5` | S 波估算速度，单位 km/s |
 
-其余环境变量用于数据保留、Bark 并发和反向地理编码，保持 [.env.example](.env.example) 中的默认值即可。
+其余环境变量用于数据保留、Bark 并发和反向地理编码，默认值见 [.env.example](.env.example)。
+
+## 安全与隐私
+
+服务会保存 Bark Key、监测地点和通知规则。通知详情 URL 包含访问凭据，反向代理、CDN、WAF、APM 和分析系统不得记录 `/incidents/` 路径的完整 URL。
+
+- 不要提交真实 `.env`、数据库、Bark Key 或签名私钥
+- 不要在日志、截图、Issue 或测试数据中使用真实 Bark Key、用户位置或通知详情 URL
+- 修改 `ALERT_SIGNING_KEY` 后，之前发送的详情链接会失效
+- 统计接口只返回聚合数量，系统不提供通过 Bark Key 查询订阅内容的接口
 
 ## 使用与部署责任
 
@@ -122,27 +185,7 @@ BARK_URL_ALLOWLIST=https://api.day.app,http://192.168.1.10:8080,https://example.
 
 该环境变量只记录部署者的明确确认，不能替代法律评估、行政许可、数据授权或个人信息处理依据，也不能证明某项部署当然合法。若部署者不能确认上述事项，应保持默认值 `false`，并停止对外提供实时功能。
 
-## 从旧版 sled 迁移
-
-只需要迁移旧版订阅时，先编译迁移工具：
-
-```bash
-cargo build --release --features migration --bin disaster-alert-migrate
-```
-
-停止旧服务后执行：
-
-```bash
-./target/release/disaster-alert-migrate \
-  ./data/disaster-alert.db/ \
-  ./data/disaster-alert.fjall
-```
-
-迁移完成后，将 `DB_PATH` 指向新目录。迁移工具只迁移订阅，不迁移旧通知任务和历史记录。迁移期间不要同时运行新旧服务。
-
 ## API
-
-大多数用户可以直接使用网页，无需手动调用 API。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -154,105 +197,7 @@ cargo build --release --features migration --bin disaster-alert-migrate
 | `GET` | `/api/status` | 获取订阅总数、数据源和后台任务状态 |
 | `GET` | `/health` | 健康检查 |
 
-`POST /api/subscribe` 仅在 `INSTANCE_TERMS_ACCEPTED=true` 时可用。未确认时返回 `503`，且不会创建订阅或发送 Bark 确认通知；取消订阅接口不受此门禁影响。
-
-接口统一返回：
-
-```json
-{
-  "success": true,
-  "message": "操作成功",
-  "data": {}
-}
-```
-
-### 创建订阅
-
-```http
-POST /api/subscribe
-Content-Type: application/json
-```
-
-```json
-{
-  "destination": {
-    "type": "bark",
-    "base_url": "https://api.day.app",
-    "device_key": "yourBarkKey"
-  },
-  "targets": [
-    {
-      "label": "上海家中",
-      "point": { "latitude": 31.2304, "longitude": 121.4737 },
-      "region": { "province": "上海市", "city": "上海市", "district": "浦东新区" }
-    }
-  ],
-  "alerts": [
-    {
-      "category": "earthquake_warning",
-      "sources": { "mode": "all" },
-      "estimated_intensity_bands": [
-        { "min": 1, "max": 1, "interruption_level": "passive" },
-        { "min": 2, "max": 2, "interruption_level": "active" },
-        { "min": 3, "max": 7, "interruption_level": "critical" }
-      ]
-    }
-  ]
-}
-```
-
-每个订阅支持 1 到 3 个监测地点。`base_url` 必须出现在 `BARK_URL_ALLOWLIST` 中，Bark Key 只能包含字母和数字，最长 64 个字符。
-
-可用灾种规则：
-
-| 灾种 | `category` | 主要条件 |
-| --- | --- | --- |
-| 地震预警 | `earthquake_warning` | `estimated_intensity_bands`，预计烈度范围 `0..=7` |
-| 地震速报 | `earthquake_report` | `min_magnitude`，最低震级 `0..=10` |
-| 气象预警 | `weather_warning` | `min_severity` 和 `fallback_radius_km` |
-| 海啸预警 | `tsunami` | `min_severity`，范围 `1..=4` |
-| 台风信息 | `typhoon` | `max_center_distance_km`，范围 `1..=3000` km |
-
-`sources` 支持两种形式：
-
-```json
-{ "mode": "all" }
-```
-
-```json
-{ "mode": "include", "ids": ["fanstudio.cenc"] }
-```
-
-提交订阅后，服务会发送 Bark 测试通知。收到成功响应表示订阅已经生效；返回 `202` 表示 Bark 暂时不可用，服务会在后台继续确认。
-
-### 删除订阅
-
-```http
-DELETE /api/unsubscribe
-Content-Type: application/json
-```
-
-```json
-{
-  "destination": {
-    "type": "bark",
-    "base_url": "https://api.day.app",
-    "device_key": "yourBarkKey"
-  }
-}
-```
-
-订阅身份由 Bark 服务地址和 Bark Key 共同确定。
-
-## 隐私
-
-服务会保存 Bark Key、监测地点和通知规则。部署和开发时请遵守以下约束：
-
-- 不要提交真实 `.env`、数据库、Bark Key 或签名私钥
-- 不要在日志、截图、Issue 或测试数据中使用真实 Bark Key 和用户位置
-- 不要记录通知详情 URL 的完整路径
-- 统计接口只返回聚合数量
-- 系统不提供通过 Bark Key 查询订阅内容的接口
+机器可读的接口规范见 [OpenAPI 3.1](docs/openapi.yaml)。大多数用户可以直接使用内置的网页。
 
 ## 开发
 

@@ -1,0 +1,714 @@
+openapi: 3.1.0
+info:
+  title: Disaster Alert API
+  version: 0.1.0
+  description: |
+    灾害预警 Bark 订阅系统的 JSON HTTP API。
+    首页和通知详情页返回 HTML，不属于本规范。
+  license:
+    name: Apache License 2.0
+    identifier: Apache-2.0
+servers:
+  - url: /
+security: []
+tags:
+  - name: Subscriptions
+    description: Bark 订阅管理
+  - name: Metadata
+    description: 前端配置与辅助数据
+  - name: Operations
+    description: 服务状态与健康检查
+paths:
+  /api/subscribe:
+    post:
+      tags: [Subscriptions]
+      operationId: subscribe
+      summary: 创建或覆盖订阅
+      description: |
+        创建订阅并向 Bark 目标发送确认通知。
+        仅在实例设置 `INSTANCE_TERMS_ACCEPTED=true` 时可用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscribeRequest"
+            examples:
+              earthquakeWarning:
+                summary: 地震预警订阅
+                value:
+                  destination:
+                    type: bark
+                    base_url: https://api.day.app
+                    device_key: yourBarkKey
+                  targets:
+                    - label: 上海家中
+                      point:
+                        latitude: 31.2304
+                        longitude: 121.4737
+                      region:
+                        province: 上海市
+                        city: 上海市
+                        district: 浦东新区
+                  alerts:
+                    - category: earthquake_warning
+                      sources:
+                        mode: all
+                      estimated_intensity_bands:
+                        - min: 1
+                          max: 1
+                          interruption_level: passive
+                        - min: 2
+                          max: 2
+                          interruption_level: active
+                        - min: 3
+                          max: 7
+                          interruption_level: critical
+      responses:
+        "200":
+          description: 订阅已保存并通过 Bark 确认
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscribeApiResponse"
+        "202":
+          description: Bark 暂时不可用，确认任务已进入后台重试
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscribeApiResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: 同一 Bark 目标已有更新的订阅请求
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          description: Bark 拒绝确认请求，订阅未激活
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/unsubscribe:
+    delete:
+      tags: [Subscriptions]
+      operationId: unsubscribe
+      summary: 删除订阅
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnsubscribeRequest"
+      responses:
+        "200":
+          description: 订阅已删除
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptySuccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: 订阅不存在或已取消
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/bark-urls:
+    get:
+      tags: [Metadata]
+      operationId: listBarkUrls
+      summary: 获取允许使用的 Bark 服务地址
+      responses:
+        "200":
+          description: Bark 服务地址列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BarkUrlsApiResponse"
+  /api/subscription-options:
+    get:
+      tags: [Metadata]
+      operationId: getSubscriptionOptions
+      summary: 获取灾种、来源和默认订阅规则
+      responses:
+        "200":
+          description: 订阅选项
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionOptionsApiResponse"
+  /api/reverse-geocode:
+    get:
+      tags: [Metadata]
+      operationId: reverseGeocode
+      summary: 根据坐标查询行政区
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: 行政区解析结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReverseGeocodeApiResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/status:
+    get:
+      tags: [Operations]
+      operationId: getStatus
+      summary: 获取运行状态
+      responses:
+        "200":
+          description: 订阅数量、数据源状态和任务队列状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusApiResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /health:
+    get:
+      tags: [Operations]
+      operationId: health
+      summary: 健康检查
+      responses:
+        "200":
+          description: 服务进程可以响应请求
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptySuccessResponse"
+components:
+  responses:
+    BadRequest:
+      description: 请求体、查询参数或订阅规则无效
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: 内部存储或后台任务失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: 实例门禁未开启、服务繁忙或上游暂时不可用
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    SubscribeRequest:
+      type: object
+      additionalProperties: false
+      required: [destination, targets, alerts]
+      properties:
+        destination:
+          $ref: "#/components/schemas/BarkDestination"
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/MonitoringTarget"
+        alerts:
+          type: array
+          minItems: 1
+          maxItems: 5
+          description: 每个灾种最多出现一次。
+          items:
+            $ref: "#/components/schemas/AlertRule"
+    UnsubscribeRequest:
+      type: object
+      additionalProperties: false
+      required: [destination]
+      properties:
+        destination:
+          $ref: "#/components/schemas/BarkDestination"
+    BarkDestination:
+      type: object
+      additionalProperties: false
+      required: [type, base_url, device_key]
+      properties:
+        type:
+          type: string
+          const: bark
+        base_url:
+          type: string
+          format: uri
+          description: 必须出现在实例的 `BARK_URL_ALLOWLIST` 中。
+          examples: [https://api.day.app]
+        device_key:
+          type: string
+          pattern: "^[A-Za-z0-9]{1,64}$"
+          writeOnly: true
+    MonitoringTarget:
+      type: object
+      additionalProperties: false
+      required: [point]
+      properties:
+        label:
+          type: string
+          maxLength: 80
+          default: ""
+        point:
+          $ref: "#/components/schemas/GeoPoint"
+        region:
+          $ref: "#/components/schemas/AdministrativeRegion"
+    GeoPoint:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+    AdministrativeRegion:
+      type: object
+      additionalProperties: false
+      properties:
+        province:
+          type: string
+          maxLength: 80
+          default: ""
+        city:
+          type: string
+          maxLength: 80
+          default: ""
+        district:
+          type: string
+          maxLength: 80
+          default: ""
+    SourceSelection:
+      oneOf:
+        - $ref: "#/components/schemas/AllSources"
+        - $ref: "#/components/schemas/IncludedSources"
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: "#/components/schemas/AllSources"
+          include: "#/components/schemas/IncludedSources"
+    AllSources:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          const: all
+    IncludedSources:
+      type: object
+      additionalProperties: false
+      required: [mode, ids]
+      properties:
+        mode:
+          type: string
+          const: include
+        ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+    AlertRule:
+      oneOf:
+        - $ref: "#/components/schemas/EarthquakeWarningRule"
+        - $ref: "#/components/schemas/EarthquakeReportRule"
+        - $ref: "#/components/schemas/WeatherWarningRule"
+        - $ref: "#/components/schemas/TsunamiRule"
+        - $ref: "#/components/schemas/TyphoonRule"
+      discriminator:
+        propertyName: category
+        mapping:
+          earthquake_warning: "#/components/schemas/EarthquakeWarningRule"
+          earthquake_report: "#/components/schemas/EarthquakeReportRule"
+          weather_warning: "#/components/schemas/WeatherWarningRule"
+          tsunami: "#/components/schemas/TsunamiRule"
+          typhoon: "#/components/schemas/TyphoonRule"
+    EarthquakeWarningRule:
+      type: object
+      additionalProperties: false
+      required: [category, sources, estimated_intensity_bands]
+      properties:
+        category:
+          type: string
+          const: earthquake_warning
+        sources:
+          $ref: "#/components/schemas/SourceSelection"
+        estimated_intensity_bands:
+          type: array
+          minItems: 1
+          maxItems: 3
+          description: 烈度区间不得重叠，每个中断级别最多出现一次；critical 区间必须覆盖烈度 7。
+          items:
+            $ref: "#/components/schemas/IntensityBand"
+    IntensityBand:
+      type: object
+      additionalProperties: false
+      required: [min, max, interruption_level]
+      properties:
+        min:
+          type: integer
+          minimum: 0
+          maximum: 7
+        max:
+          type: integer
+          minimum: 0
+          maximum: 7
+        interruption_level:
+          type: string
+          enum: [passive, active, critical]
+    EarthquakeReportRule:
+      type: object
+      additionalProperties: false
+      required: [category, sources, min_magnitude]
+      properties:
+        category:
+          type: string
+          const: earthquake_report
+        sources:
+          $ref: "#/components/schemas/SourceSelection"
+        min_magnitude:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+    WeatherWarningRule:
+      type: object
+      additionalProperties: false
+      required: [category, sources, min_severity, fallback_radius_km]
+      properties:
+        category:
+          type: string
+          const: weather_warning
+        sources:
+          $ref: "#/components/schemas/SourceSelection"
+        min_severity:
+          type: integer
+          minimum: 1
+          maximum: 4
+        fallback_radius_km:
+          type: number
+          format: double
+          minimum: 1
+          maximum: 2000
+    TsunamiRule:
+      type: object
+      additionalProperties: false
+      required: [category, sources, min_severity]
+      properties:
+        category:
+          type: string
+          const: tsunami
+        sources:
+          $ref: "#/components/schemas/SourceSelection"
+        min_severity:
+          type: integer
+          minimum: 1
+          maximum: 4
+    TyphoonRule:
+      type: object
+      additionalProperties: false
+      required: [category, sources, max_center_distance_km]
+      properties:
+        category:
+          type: string
+          const: typhoon
+        sources:
+          $ref: "#/components/schemas/SourceSelection"
+        max_center_distance_km:
+          type: number
+          format: double
+          minimum: 1
+          maximum: 3000
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+          const: false
+        message:
+          type: string
+    EmptySuccessResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+    SubscribeApiResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/SubscribeResult"
+    SubscribeResult:
+      type: object
+      additionalProperties: false
+      required: [saved]
+      properties:
+        saved:
+          type: boolean
+          description: "`true` 表示订阅已激活；`false` 表示确认仍在后台重试。"
+    BarkUrlsApiResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [bark_urls]
+          properties:
+            bark_urls:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                format: uri
+    SubscriptionOptionsApiResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [categories]
+          properties:
+            categories:
+              type: array
+              items:
+                $ref: "#/components/schemas/CategoryOption"
+    CategoryOption:
+      type: object
+      additionalProperties: false
+      required: [id, label, source_groups, default_alert]
+      properties:
+        id:
+          type: string
+          enum: [earthquake_warning, earthquake_report, weather_warning, tsunami, typhoon]
+        label:
+          type: string
+        source_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceGroup"
+        default_alert:
+          $ref: "#/components/schemas/AlertRule"
+    SourceGroup:
+      type: object
+      additionalProperties: false
+      required: [id, label, sources]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceOption"
+    SourceOption:
+      type: object
+      additionalProperties: false
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+    ReverseGeocodeApiResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/ReverseGeocodeResult"
+    ReverseGeocodeResult:
+      type: object
+      additionalProperties: false
+      required: [province, city, district]
+      properties:
+        province:
+          type: string
+        city:
+          type: string
+        district:
+          type: string
+    StatusApiResponse:
+      type: object
+      additionalProperties: false
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/Status"
+    Status:
+      type: object
+      additionalProperties: false
+      required: [total_subscriptions, wolfx, fanstudio, durable, ready_queues]
+      properties:
+        total_subscriptions:
+          type: integer
+          minimum: 0
+        wolfx:
+          $ref: "#/components/schemas/ChannelStatus"
+        fanstudio:
+          $ref: "#/components/schemas/ChannelStatus"
+        durable:
+          $ref: "#/components/schemas/DurableBacklog"
+        ready_queues:
+          $ref: "#/components/schemas/ReadyQueues"
+    ChannelStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - connected
+        - last_message_epoch_ms
+        - reconnects
+        - messages
+        - parse_errors
+        - notifications_succeeded
+        - notifications_failed
+      properties:
+        connected:
+          type: boolean
+        last_message_epoch_ms:
+          type: [integer, "null"]
+          minimum: 0
+        reconnects:
+          type: integer
+          minimum: 0
+        messages:
+          type: integer
+          minimum: 0
+        parse_errors:
+          type: integer
+          minimum: 0
+        notifications_succeeded:
+          type: integer
+          minimum: 0
+        notifications_failed:
+          type: integer
+          minimum: 0
+    DurableBacklog:
+      type: object
+      additionalProperties: false
+      required:
+        - inbox_pending
+        - match_jobs_pending
+        - delivery_batches_pending
+        - retries_pending
+        - subscription_confirmations_pending
+      properties:
+        inbox_pending:
+          type: integer
+          minimum: 0
+        match_jobs_pending:
+          type: integer
+          minimum: 0
+        delivery_batches_pending:
+          type: integer
+          minimum: 0
+        retries_pending:
+          type: integer
+          minimum: 0
+        subscription_confirmations_pending:
+          type: integer
+          minimum: 0
+    ReadyQueues:
+      type: object
+      additionalProperties: false
+      required: [inbox, matching, delivery]
+      properties:
+        inbox:
+          $ref: "#/components/schemas/ReadyQueue"
+        matching:
+          $ref: "#/components/schemas/ReadyQueue"
+        delivery:
+          $ref: "#/components/schemas/ReadyQueue"
+    ReadyQueue:
+      type: object
+      additionalProperties: false
+      required: [depth, bytes, backpressure]
+      properties:
+        depth:
+          type: integer
+          minimum: 0
+        bytes:
+          type: integer
+          minimum: 0
+        backpressure:
+          type: integer
+          minimum: 0

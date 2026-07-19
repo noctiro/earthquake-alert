@@ -15,7 +15,10 @@ use crate::subscriptions::{
 use crate::utils::distance;
 use axum::{
     Json,
-    extract::{Query, State, rejection::JsonRejection},
+    extract::{
+        Query, State,
+        rejection::{JsonRejection, QueryRejection},
+    },
     http::StatusCode,
     response::IntoResponse,
 };
@@ -91,8 +94,12 @@ pub(crate) struct ReverseGeocodeQuery {
 
 pub(crate) async fn reverse_geocode_handler(
     State(state): State<AppState>,
-    Query(query): Query<ReverseGeocodeQuery>,
+    query: Result<Query<ReverseGeocodeQuery>, QueryRejection>,
 ) -> impl IntoResponse {
+    let query = match parse_reverse_geocode_query(query) {
+        Ok(query) => query,
+        Err(response) => return (StatusCode::BAD_REQUEST, Json(response)),
+    };
     if !distance::validate_coordinates(query.latitude, query.longitude) {
         return (
             StatusCode::BAD_REQUEST,
@@ -124,6 +131,14 @@ pub(crate) async fn reverse_geocode_handler(
             )
         }
     }
+}
+
+fn parse_reverse_geocode_query(
+    query: Result<Query<ReverseGeocodeQuery>, QueryRejection>,
+) -> Result<ReverseGeocodeQuery, ApiResponse<ReverseGeocodeResult>> {
+    query
+        .map(|Query(query)| query)
+        .map_err(|_| ApiResponse::error("坐标参数无效"))
 }
 
 pub(crate) async fn subscribe_handler(
@@ -605,6 +620,20 @@ mod tests {
         let mut payload = request();
         payload.targets[0].region.province = "省".repeat(MAX_LOCATION_NAME_CHARS + 1);
         assert!(normalize_targets(payload.targets).is_err());
+    }
+
+    #[test]
+    fn reverse_geocode_query_rejection_uses_the_api_envelope() {
+        let uri = axum::http::Uri::from_static("/api/reverse-geocode?latitude=31.2");
+        let query = Query::<ReverseGeocodeQuery>::try_from_uri(&uri);
+        let response = match parse_reverse_geocode_query(query) {
+            Ok(_) => panic!("missing longitude should be rejected"),
+            Err(response) => response,
+        };
+
+        assert!(!response.success);
+        assert_eq!(response.message, "坐标参数无效");
+        assert!(response.data.is_none());
     }
 
     #[test]

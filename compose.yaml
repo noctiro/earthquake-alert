@@ -1,0 +1,37 @@
+name: disaster-alert
+
+services:
+  disaster-alert:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: ${SERVER_PORT:-30010}
+      DB_PATH: /data/disaster-alert.fjall
+    ports:
+      - target: ${SERVER_PORT:-30010}
+        published: ${SERVER_PORT:-30010}
+        host_ip: ${SERVER_PUBLISH_HOST:-127.0.0.1}
+        protocol: tcp
+    volumes:
+      - disaster-alert-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - http://127.0.0.1:${SERVER_PORT:-30010}/health
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    # Shutdown can use three sequential timeout windows plus forced cleanup.
+    stop_grace_period: 16m
+
+volumes:
+  disaster-alert-data:
