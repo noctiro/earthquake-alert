@@ -1,10 +1,10 @@
 use crate::config::normalize_bark_url;
-use crate::delivery::{BarkNotifier, NotificationLinkService};
+use crate::delivery::{BarkDeliveryError, BarkNotifier, NotificationLinkService};
 use crate::models::{
     ApiResponse, MonitoringTarget, NotificationDestination, SubscribeRequest, Subscription,
     UnsubscribeRequest, mask_device_key,
 };
-use crate::routes::{ReverseGeocodeResult, ReverseGeocoder};
+use crate::routes::{GeocodeSearchResult, ReverseGeocodeResult, ReverseGeocoder};
 use crate::runtime::{DurableBacklogSnapshot, RuntimeStatus, RuntimeStatusSnapshot};
 use crate::source_registry::{CategoryOption, category_options};
 use crate::storage::Storage;
@@ -15,10 +15,7 @@ use crate::subscriptions::{
 use crate::utils::distance;
 use axum::{
     Json,
-    extract::{
-        Query, State,
-        rejection::{JsonRejection, QueryRejection},
-    },
+    extract::{Query, State, rejection::JsonRejection},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -28,7 +25,6 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 const MAX_LOCATIONS: usize = 3;
 const MAX_LOCATION_NAME_CHARS: usize = 80;
-const INSTANCE_TERMS_REQUIRED_MESSAGE: &str = "当前实例尚未确认部署责任，暂不接受新增或覆盖订阅";
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -92,14 +88,49 @@ pub(crate) struct ReverseGeocodeQuery {
     longitude: f64,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct GeocodeQuery {
+    q: String,
+}
+
+pub(crate) async fn geocode_handler(
+    State(state): State<AppState>,
+    Query(query): Query<GeocodeQuery>,
+) -> impl IntoResponse {
+    let text = query.q.trim();
+    if text.chars().count() < 2 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<Vec<GeocodeSearchResult>>::error(
+                "搜索地址至少需要 2 个字符",
+            )),
+        );
+    }
+    match state.reverse_geocoder.search(text).await {
+        Ok(results) => (
+            StatusCode::OK,
+            Json(ApiResponse::success("地址搜索成功", Some(results))),
+        ),
+        Err(error) => {
+            tracing::warn!(
+                event = "geocode_search.failed",
+                error = ?error,
+                "geocode_search.failed"
+            );
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<Vec<GeocodeSearchResult>>::error(
+                    "地址搜索暂时不可用，请使用地图点选或手动输入坐标",
+                )),
+            )
+        }
+    }
+}
+
 pub(crate) async fn reverse_geocode_handler(
     State(state): State<AppState>,
-    query: Result<Query<ReverseGeocodeQuery>, QueryRejection>,
+    Query(query): Query<ReverseGeocodeQuery>,
 ) -> impl IntoResponse {
-    let query = match parse_reverse_geocode_query(query) {
-        Ok(query) => query,
-        Err(response) => return (StatusCode::BAD_REQUEST, Json(response)),
-    };
     if !distance::validate_coordinates(query.latitude, query.longitude) {
         return (
             StatusCode::BAD_REQUEST,
@@ -133,21 +164,68 @@ pub(crate) async fn reverse_geocode_handler(
     }
 }
 
-fn parse_reverse_geocode_query(
-    query: Result<Query<ReverseGeocodeQuery>, QueryRejection>,
-) -> Result<ReverseGeocodeQuery, ApiResponse<ReverseGeocodeResult>> {
-    query
-        .map(|Query(query)| query)
-        .map_err(|_| ApiResponse::error("坐标参数无效"))
+#[derive(Deserialize)]
+pub(crate) struct TestNotificationRequest {
+    destination: NotificationDestination,
+    #[serde(default)]
+    level: String,
+}
+
+pub(crate) async fn test_notification_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<TestNotificationRequest>, JsonRejection>,
+) -> impl IntoResponse {
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::error("测试通知请求体无效")),
+            );
+        }
+    };
+    let device_key = match validate_device_key(payload.destination.bark_device_key()) {
+        Ok(value) => value,
+        Err((status, message)) => return (status, Json(ApiResponse::<()>::error(message))),
+    };
+    let bark_url = match normalize_bark_url(payload.destination.bark_base_url()) {
+        Ok(value) if state.bark_notifier.allows_bark_url(&value) => value,
+        Ok(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::error("Bark URL 不在允许列表中")),
+            );
+        }
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::error("Bark URL 无效")),
+            );
+        }
+    };
+
+    tracing::info!(
+        event = "subscription.test_notification_requested",
+        device_key = %mask_device_key(&device_key),
+        "subscription.test_notification_requested"
+    );
+    match state
+        .bark_notifier
+        .send_test_notification(&bark_url, &device_key, &payload.level)
+        .await
+    {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ApiResponse::<()>::success("测试通知已发送", None)),
+        ),
+        Err(error) => test_notification_error_response(error),
+    }
 }
 
 pub(crate) async fn subscribe_handler(
     State(state): State<AppState>,
     payload: Result<Json<SubscribeRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if let Err(response) = require_subscription_creation_enabled(state.instance_terms_accepted) {
-        return response;
-    }
     let Json(payload) = match payload {
         Ok(payload) => payload,
         Err(_) => {
@@ -306,23 +384,34 @@ pub(crate) async fn subscribe_handler(
     }
 }
 
-fn require_subscription_creation_enabled(
-    instance_terms_accepted: bool,
-) -> std::result::Result<(), (StatusCode, Json<ApiResponse<SubscribeResponse>>)> {
-    if instance_terms_accepted {
-        Ok(())
-    } else {
-        Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ApiResponse::error(INSTANCE_TERMS_REQUIRED_MESSAGE)),
-        ))
-    }
-}
-
 fn try_acquire_subscription_slot(
     concurrency: &Arc<Semaphore>,
 ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
     Arc::clone(concurrency).try_acquire_owned()
+}
+
+fn test_notification_error_response(
+    error: BarkDeliveryError,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    let status = if error.is_permanent() {
+        StatusCode::BAD_GATEWAY
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    tracing::warn!(
+        event = "subscription.test_notification_failed",
+        transient = !error.is_permanent(),
+        error = ?error,
+        "subscription.test_notification_failed"
+    );
+    (
+        status,
+        Json(ApiResponse::<()>::error(if error.is_permanent() {
+            "Bark 测试通知发送失败，请检查 Bark Key"
+        } else {
+            "Bark 服务暂时不可用，请稍后重试"
+        })),
+    )
 }
 
 #[derive(Serialize)]
@@ -623,20 +712,6 @@ mod tests {
     }
 
     #[test]
-    fn reverse_geocode_query_rejection_uses_the_api_envelope() {
-        let uri = axum::http::Uri::from_static("/api/reverse-geocode?latitude=31.2");
-        let query = Query::<ReverseGeocodeQuery>::try_from_uri(&uri);
-        let response = match parse_reverse_geocode_query(query) {
-            Ok(_) => panic!("missing longitude should be rejected"),
-            Err(response) => response,
-        };
-
-        assert!(!response.success);
-        assert_eq!(response.message, "坐标参数无效");
-        assert!(response.data.is_none());
-    }
-
-    #[test]
     fn subscription_admission_rejects_before_external_work_when_saturated() {
         let concurrency = Arc::new(Semaphore::new(1));
         let held = try_acquire_subscription_slot(&concurrency);
@@ -644,20 +719,6 @@ mod tests {
         assert!(try_acquire_subscription_slot(&concurrency).is_err());
         drop(held);
         assert!(try_acquire_subscription_slot(&concurrency).is_ok());
-    }
-
-    #[test]
-    fn subscription_creation_requires_accepted_instance_terms() {
-        assert!(require_subscription_creation_enabled(true).is_ok());
-
-        let result = require_subscription_creation_enabled(false);
-        assert!(result.is_err());
-        if let Err((status, Json(response))) = result {
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-            assert!(!response.success);
-            assert_eq!(response.message, INSTANCE_TERMS_REQUIRED_MESSAGE);
-            assert!(response.data.is_none());
-        }
     }
 
     #[test]

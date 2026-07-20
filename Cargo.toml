@@ -24,6 +24,8 @@ path = "src/bin/disaster_alert_migrate.rs"
 required-features = ["migration"]
 
 [dependencies]
+aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "alloc", "getrandom", "zeroize"] }
 anyhow = { version = "1.0.103", default-features = false, features = ["std"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }

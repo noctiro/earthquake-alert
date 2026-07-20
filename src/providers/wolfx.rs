@@ -15,11 +15,11 @@ use tokio_tungstenite::{
 };
 
 const MAX_WEBSOCKET_MESSAGE_BYTES: usize = 1024 * 1024;
-const WOLFX_WEBSOCKET_URL: &str = "wss://ws-api.wolfx.jp/all_eew";
 
 #[derive(Clone)]
 pub(crate) struct WolfxSource {
     event_runtime: EventRuntime,
+    websocket_url: String,
     reconnect_min: Duration,
     reconnect_max: Duration,
     runtime_status: RuntimeStatus,
@@ -33,6 +33,7 @@ impl WolfxSource {
     ) -> Self {
         Self {
             event_runtime,
+            websocket_url: config.wolfx_websocket_url.clone(),
             reconnect_min: Duration::from_secs(config.reconnect_min_seconds),
             reconnect_max: Duration::from_secs(config.reconnect_max_seconds),
             runtime_status,
@@ -79,7 +80,7 @@ impl WolfxSource {
         let connect = tokio::time::timeout(
             Duration::from_secs(10),
             connect_async_with_config(
-                WOLFX_WEBSOCKET_URL,
+                &self.websocket_url,
                 Some(
                     WebSocketConfig::default()
                         .max_message_size(Some(MAX_WEBSOCKET_MESSAGE_BYTES))
@@ -100,7 +101,7 @@ impl WolfxSource {
         self.runtime_status.wolfx().set_connected(true);
         tracing::info!(
             event = "wolfx.connected",
-            websocket_url = WOLFX_WEBSOCKET_URL,
+            websocket_url = %self.websocket_url,
             "wolfx.connected"
         );
         let (mut write, mut read) = socket.split();

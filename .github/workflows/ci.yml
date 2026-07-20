@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust 1.97
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal --component rustfmt
+          rustup default 1.97.0
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check all targets
+        run: cargo check --locked --all-features --all-targets
+      - name: Run tests
+        run: cargo test --locked --all-features --all-targets
+      - name: Build deployment image
+        run: docker build --tag disaster-alert:test .
+      - name: Package Linux x86_64 release
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          container_id="$(docker create disaster-alert:test)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          docker cp "$container_id:/usr/local/bin/disaster-alert" dist/disaster-alert
+          chmod 0755 dist/disaster-alert
+          tar --create --gzip \
+            --file dist/disaster-alert-linux-x86_64.tar.gz \
+            --directory dist \
+            disaster-alert
+          (
+            cd dist
+            sha256sum disaster-alert-linux-x86_64.tar.gz \
+              > disaster-alert-linux-x86_64.tar.gz.sha256
+          )
+      - name: Verify glibc 2.34 compatibility
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          binary = Path("dist/disaster-alert").read_bytes()
+          versions = {
+              tuple(map(int, match.split(b".")))
+              for match in re.findall(rb"GLIBC_([0-9]+\.[0-9]+)", binary)
+          }
+          required = max(versions, default=(0, 0))
+          print(f"maximum required GLIBC version: {required[0]}.{required[1]}")
+          if required > (2, 34):
+              raise SystemExit("release is not compatible with Rocky/AlmaLinux 9")
+          PY
+      - name: Upload Linux x86_64 release
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: disaster-alert-linux-x86_64-${{ github.sha }}
+          path: |
+            dist/disaster-alert-linux-x86_64.tar.gz
+            dist/disaster-alert-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

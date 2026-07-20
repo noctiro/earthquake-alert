@@ -1,11 +1,12 @@
-use crate::config::{Config, load_dotenv};
+use crate::config::{BARK_API_BASE_URL, Config, load_dotenv};
 use crate::delivery::{BarkNotifier, BarkPushConfig, NotificationLinkService};
 use crate::lifecycle;
 use crate::providers::{FanStudioSource, WolfxSource};
 use crate::routes::{
-    AppState, ReverseGeocoder, bark_urls_handler, health_handler, incident_detail_handler,
-    index_handler, reverse_geocode_handler, status_handler, subscribe_handler,
-    subscription_options_handler, unsubscribe_handler,
+    AppState, ReverseGeocoder, bark_urls_handler, frontend_config_handler, geocode_handler,
+    health_handler, incident_detail_handler, index_handler, reverse_geocode_handler,
+    status_handler, subscribe_handler, subscription_options_handler, test_notification_handler,
+    unsubscribe_handler,
 };
 use crate::runtime::{EventRuntime, RuntimeStatus};
 use crate::storage::{RetentionPolicy, Storage};
@@ -57,6 +58,8 @@ async fn run() -> Result<()> {
         server_host = %config.server_host,
         server_port = config.server_port,
         db_path = %config.db_path,
+        wolfx_websocket_url = %config.wolfx_websocket_url,
+        fanstudio_websocket_url = %config.fanstudio_websocket_url,
         max_concurrent_notifications = config.max_concurrent_notifications,
         http_pool_size = config.http_pool_size,
         "config.loaded"
@@ -70,9 +73,11 @@ async fn run() -> Result<()> {
     }
 
     let db_path = config.db_path.clone();
-    let storage = tokio::task::spawn_blocking(move || Storage::open(db_path))
-        .await
-        .context("database open task failed")??;
+    let data_encryption_key = config.data_encryption_key.expose();
+    let storage =
+        tokio::task::spawn_blocking(move || Storage::open_with_key(db_path, data_encryption_key))
+            .await
+            .context("database open task failed")??;
     tracing::info!(event = "database.opened", db_path = %config.db_path, "database.opened");
     let prune_storage = storage.clone();
     let retention_policy = RetentionPolicy {
@@ -102,7 +107,7 @@ async fn run() -> Result<()> {
         config.bark_call,
     );
     let bark_notifier = BarkNotifier::new(
-        config.bark_url_allowlist.clone(),
+        vec![BARK_API_BASE_URL.to_string()],
         config.http_pool_size,
         config.max_concurrent_notifications,
         push_config,
@@ -143,6 +148,7 @@ async fn run() -> Result<()> {
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/index.html", get(index_handler))
+        .route("/config.js", get(frontend_config_handler))
         .route(
             "/incidents/{incident_id}/notifications/{token}",
             get(incident_detail_handler),
@@ -153,7 +159,9 @@ async fn run() -> Result<()> {
             post(subscribe_handler).layer(DefaultBodyLimit::max(SUBSCRIPTION_BODY_LIMIT_BYTES)),
         )
         .route("/api/bark-urls", get(bark_urls_handler))
+        .route("/api/geocode", get(geocode_handler))
         .route("/api/reverse-geocode", get(reverse_geocode_handler))
+        .route("/api/test-notification", post(test_notification_handler))
         .route(
             "/api/subscription-options",
             get(subscription_options_handler),

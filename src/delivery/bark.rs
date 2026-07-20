@@ -270,6 +270,34 @@ impl BarkNotifier {
         .await
     }
 
+    pub(crate) async fn send_test_notification(
+        &self,
+        bark_url: &str,
+        device_key: &str,
+        level: &str,
+    ) -> std::result::Result<(), BarkDeliveryError> {
+        let level = normalize_test_level(level);
+        let title = "灾害预警测试通知";
+        let subtitle = match level {
+            "critical" => "Critical 测试 · 会按关键通知参数发送",
+            "active" => "Active 测试 · 普通横幅提醒",
+            "passive" => "Passive 测试 · 仅进入通知中心",
+            _ => "Time Sensitive 测试 · 订阅通道正常",
+        };
+        let body = "这是一条手动测试消息，不代表真实灾害事件。收到后即可确认 Bark Key 和服务端推送链路可用。";
+        self.send_notification(BarkMessage {
+            bark_url,
+            device_key,
+            level,
+            title,
+            subtitle,
+            body,
+            detail_url: None,
+            use_alert_sound: level == "critical",
+        })
+        .await
+    }
+
     async fn send_notification(
         &self,
         message: BarkMessage<'_>,
@@ -408,6 +436,16 @@ fn normalize_bark_level(level: &str) -> &'static str {
         "timesensitive" => "timeSensitive",
         "critical" => "critical",
         _ => "critical",
+    }
+}
+
+fn normalize_test_level(level: &str) -> &'static str {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "passive" => "passive",
+        "active" => "active",
+        "critical" => "critical",
+        "timesensitive" | "time_sensitive" | "time-sensitive" => "timeSensitive",
+        _ => "timeSensitive",
     }
 }
 

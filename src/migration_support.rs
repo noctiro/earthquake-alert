@@ -12,9 +12,9 @@ pub struct MigrationStorage {
 }
 
 impl MigrationStorage {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn open(path: impl AsRef<Path>, data_encryption_key: [u8; 32]) -> Result<Self> {
         Ok(Self {
-            storage: Storage::open(path)?,
+            storage: Storage::open_with_key(path, data_encryption_key)?,
         })
     }
 

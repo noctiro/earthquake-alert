@@ -1,4 +1,4 @@
-use super::{decode_record, encode_record};
+use super::{RecordCipher, decode_record, encode_record};
 use crate::delivery::{DeadLetterItem, DeliveryBatch, DeliverySuccess, RetryItem};
 use crate::events::MatchJob;
 use crate::matching::{MatchPlan, MatchScope, PostingBlock};
@@ -23,10 +23,13 @@ const CORRELATION_WINDOW_SECONDS: i64 = 120;
 const CORRELATION_DISTANCE_KM: f64 = 100.0;
 const CORRELATION_MAGNITUDE_DELTA: f64 = 1.0;
 const MAX_CORRELATION_CANDIDATES: usize = 1_024;
+const SUBSCRIPTION_ENCRYPTION_DOMAIN: &[u8] = b"subscriptions";
+const CONFIRMATION_ENCRYPTION_DOMAIN: &[u8] = b"confirmations";
 
 #[derive(Clone)]
 pub(crate) struct FjallStorage {
     db: Database,
+    record_cipher: RecordCipher,
     id_lock: Arc<Mutex<()>>,
     subscription_lock: Arc<Mutex<()>>,
     match_lock: Arc<Mutex<()>>,
@@ -110,7 +113,15 @@ pub(crate) struct StoragePruneStats {
 }
 
 impl FjallStorage {
+    #[cfg(test)]
     pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_key(path, [7; 32])
+    }
+
+    pub(crate) fn open_with_key(
+        path: impl AsRef<Path>,
+        data_encryption_key: [u8; 32],
+    ) -> Result<Self> {
         let db = Database::builder(path)
             .open()
             .context("failed to open Fjall database")?;
@@ -119,6 +130,7 @@ impl FjallStorage {
                 .with_context(|| format!("failed to open Fjall keyspace {name}"))
         };
         let storage = Self {
+            record_cipher: RecordCipher::new(data_encryption_key)?,
             id_lock: Arc::new(Mutex::new(())),
             subscription_lock: Arc::new(Mutex::new(())),
             match_lock: Arc::new(Mutex::new(())),
@@ -149,6 +161,7 @@ impl FjallStorage {
             db,
         };
         storage.initialize()?;
+        storage.migrate_sensitive_records()?;
         Ok(storage)
     }
 
@@ -161,6 +174,96 @@ impl FjallStorage {
             None => self.meta.insert(b"format_version", FORMAT_VERSION)?,
         }
         Ok(())
+    }
+
+    fn migrate_sensitive_records(&self) -> Result<()> {
+        let mut batch = self.db.batch();
+        let mut changed = false;
+
+        for item in self.meta.prefix(b"confirmation:") {
+            let (key, value) = item.into_inner()?;
+            let id = confirmation_id_from_key(&key)?;
+            let plaintext = self.open_confirmation(id, &value)?;
+            if !RecordCipher::is_encrypted(&value) {
+                batch.insert(&self.meta, key, self.seal_confirmation(id, &plaintext)?);
+                changed = true;
+            }
+        }
+
+        for item in self.subscriptions.iter() {
+            let (key, value) = item.into_inner()?;
+            let record = self.decode_subscription(&key, &value)?;
+            if !record.active {
+                if let Some(compiled) = self.compiled_subscription(record.id)? {
+                    remove_postings(&self.postings, &mut batch, &compiled)?;
+                }
+                batch.remove(&self.subscriptions, key.clone());
+                batch.remove(
+                    &self.subscriptions_by_destination,
+                    destination_key(&record.subscription),
+                );
+                batch.remove(&self.compiled_subscriptions, key.clone());
+                let confirmation_destination =
+                    confirmation_destination_key(&record.subscription.destination_id());
+                if let Some(id) = self
+                    .meta
+                    .get(&confirmation_destination)?
+                    .map(|value| decode_u64(&value))
+                    .transpose()?
+                {
+                    batch.remove(&self.meta, confirmation_key(id));
+                    batch.remove(&self.meta, confirmation_destination);
+                }
+                changed = true;
+            } else if !RecordCipher::is_encrypted(&value) {
+                batch.insert(&self.subscriptions, key, self.encode_subscription(&record)?);
+                changed = true;
+            }
+        }
+
+        if changed {
+            batch
+                .commit()
+                .context("failed to migrate sensitive database records")?;
+            self.persist()?;
+        }
+        Ok(())
+    }
+
+    fn encode_subscription(&self, record: &StoredSubscription) -> Result<Vec<u8>> {
+        let key = record.id.0.to_be_bytes();
+        let plaintext = encode(record)?;
+        let encrypted =
+            self.record_cipher
+                .seal(SUBSCRIPTION_ENCRYPTION_DOMAIN, &key, &plaintext)?;
+        anyhow::ensure!(
+            encrypted.len() <= MAX_RECORD_BYTES,
+            "encrypted Fjall subscription exceeds storage bound"
+        );
+        Ok(encrypted)
+    }
+
+    fn decode_subscription(&self, key: &[u8], value: &[u8]) -> Result<StoredSubscription> {
+        let plaintext = self
+            .record_cipher
+            .open(SUBSCRIPTION_ENCRYPTION_DOMAIN, key, value)?;
+        decode(&plaintext).context("invalid encrypted subscription record")
+    }
+
+    fn seal_confirmation(&self, id: u64, value: &[u8]) -> Result<Vec<u8>> {
+        let encrypted =
+            self.record_cipher
+                .seal(CONFIRMATION_ENCRYPTION_DOMAIN, &id.to_be_bytes(), value)?;
+        anyhow::ensure!(
+            encrypted.len() <= MAX_RECORD_BYTES,
+            "encrypted Fjall confirmation exceeds storage bound"
+        );
+        Ok(encrypted)
+    }
+
+    fn open_confirmation(&self, id: u64, value: &[u8]) -> Result<Vec<u8>> {
+        self.record_cipher
+            .open(CONFIRMATION_ENCRYPTION_DOMAIN, &id.to_be_bytes(), value)
     }
 
     pub(crate) fn persist(&self) -> Result<()> {
@@ -587,7 +690,7 @@ impl FjallStorage {
         let Some(current) = self.meta.get(key)? else {
             return Ok(false);
         };
-        if current.as_ref() != expected_confirmation {
+        if self.open_confirmation(confirmation_id, &current)? != expected_confirmation {
             return Ok(false);
         }
         let destination_index = confirmation_destination_key(&subscription.destination_id());
@@ -618,7 +721,7 @@ impl FjallStorage {
             .map(|value| decode_u64(&value))
             .transpose()?;
         let previous = existing_id
-            .map(|id| get_record::<StoredSubscription>(&self.subscriptions, &id.to_be_bytes()))
+            .map(|id| self.stored_subscription(SubscriptionId(id)))
             .transpose()?
             .flatten();
         let id = previous
@@ -660,29 +763,23 @@ impl FjallStorage {
         Ok(record)
     }
 
-    pub(crate) fn deactivate_subscription(&self, subscription_id: SubscriptionId) -> Result<bool> {
+    pub(crate) fn delete_subscription(&self, subscription_id: SubscriptionId) -> Result<bool> {
         let _lock = self
             .subscription_lock
             .lock()
             .map_err(|error| anyhow::anyhow!("Fjall mutation lock poisoned: {error}"))?;
-        let Some(mut record) = get_record::<StoredSubscription>(
-            &self.subscriptions,
-            &subscription_id.0.to_be_bytes(),
-        )?
-        else {
+        let Some(record) = self.stored_subscription(subscription_id)? else {
             return Ok(false);
         };
         let old = self.compiled_subscription(subscription_id)?;
-        record.active = false;
-        record.generation = record.generation.saturating_add(1);
         let mut batch = self.db.batch();
         if let Some(old) = old.as_ref() {
             remove_postings(&self.postings, &mut batch, old)?;
         }
-        batch.insert(
-            &self.subscriptions,
-            record.id.0.to_be_bytes(),
-            encode(&record)?,
+        batch.remove(&self.subscriptions, record.id.0.to_be_bytes());
+        batch.remove(
+            &self.subscriptions_by_destination,
+            destination_key(&record.subscription),
         );
         batch.remove(&self.compiled_subscriptions, record.id.0.to_be_bytes());
         let confirmation_destination =
@@ -715,7 +812,7 @@ impl FjallStorage {
         batch.insert(
             &self.subscriptions,
             record.id.0.to_be_bytes(),
-            encode(record)?,
+            self.encode_subscription(record)?,
         );
         batch.insert(
             &self.subscriptions_by_destination,
@@ -750,7 +847,11 @@ impl FjallStorage {
         &self,
         id: SubscriptionId,
     ) -> Result<Option<StoredSubscription>> {
-        get_record(&self.subscriptions, &id.0.to_be_bytes())
+        let key = id.0.to_be_bytes();
+        self.subscriptions
+            .get(key)?
+            .map(|value| self.decode_subscription(&key, &value))
+            .transpose()
     }
 
     pub(crate) fn stored_subscription_by_destination(
@@ -772,7 +873,8 @@ impl FjallStorage {
     pub(crate) fn active_subscription_count(&self) -> Result<usize> {
         let mut count = 0usize;
         for item in self.subscriptions.iter() {
-            let record: StoredSubscription = decode(&item.value()?)?;
+            let (key, value) = item.into_inner()?;
+            let record = self.decode_subscription(&key, &value)?;
             if record.active {
                 count = count.saturating_add(1);
             }
@@ -854,7 +956,7 @@ impl FjallStorage {
             batch.insert(
                 &self.subscriptions,
                 record.id.0.to_be_bytes(),
-                encode(&record)?,
+                self.encode_subscription(&record)?,
             );
             batch.insert(
                 &self.subscriptions_by_destination,
@@ -880,7 +982,8 @@ impl FjallStorage {
     pub(crate) fn active_subscriptions(&self) -> Result<Vec<StoredSubscription>> {
         let mut records = Vec::new();
         for item in self.subscriptions.iter() {
-            let record: StoredSubscription = decode(&item.value()?)?;
+            let (key, value) = item.into_inner()?;
+            let record = self.decode_subscription(&key, &value)?;
             if record.active {
                 records.push(record);
             }
@@ -981,7 +1084,11 @@ impl FjallStorage {
         if let Some(previous) = previous {
             batch.remove(&self.meta, confirmation_key(previous));
         }
-        batch.insert(&self.meta, confirmation_key(id), value);
+        batch.insert(
+            &self.meta,
+            confirmation_key(id),
+            self.seal_confirmation(id, &value)?,
+        );
         batch.insert(&self.meta, destination_key, id.to_be_bytes());
         batch
             .commit()
@@ -1004,12 +1111,12 @@ impl FjallStorage {
         let Some(current) = self.meta.get(key)? else {
             return Ok(false);
         };
-        if current.as_ref() != expected {
+        if self.open_confirmation(id, &current)? != expected {
             return Ok(false);
         }
         let mut batch = self.db.batch();
         if let Some(replacement) = replacement {
-            batch.insert(&self.meta, key, replacement);
+            batch.insert(&self.meta, key, self.seal_confirmation(id, &replacement)?);
         } else {
             batch.remove(&self.meta, key);
             if let Some(destination) = destination {
@@ -1031,16 +1138,19 @@ impl FjallStorage {
     }
 
     pub(crate) fn confirmation_record(&self, id: u64) -> Result<Option<Vec<u8>>> {
-        Ok(self
-            .meta
+        self.meta
             .get(confirmation_key(id))?
-            .map(|value| value.to_vec()))
+            .map(|value| self.open_confirmation(id, &value))
+            .transpose()
     }
 
     pub(crate) fn confirmation_records(&self) -> Result<Vec<Vec<u8>>> {
         self.meta
             .prefix(b"confirmation:")
-            .map(|item| Ok(item.value()?.to_vec()))
+            .map(|item| {
+                let (key, value) = item.into_inner()?;
+                self.open_confirmation(confirmation_id_from_key(&key)?, &value)
+            })
             .collect()
     }
 
@@ -1935,6 +2045,13 @@ fn confirmation_key(id: u64) -> [u8; 21] {
     key
 }
 
+fn confirmation_id_from_key(key: &[u8]) -> Result<u64> {
+    let bytes = key
+        .strip_prefix(b"confirmation:")
+        .context("invalid confirmation record key")?;
+    decode_u64(bytes)
+}
+
 fn confirmation_destination_key(destination: &crate::models::DestinationId) -> Vec<u8> {
     let mut key = Vec::with_capacity(25 + 32);
     key.extend_from_slice(b"confirmation-destination:");
@@ -2310,6 +2427,59 @@ mod tests {
     }
 
     #[test]
+    fn subscription_and_confirmation_values_are_encrypted_at_rest() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let storage = FjallStorage::open(directory.path())?;
+        let stored = storage.store_subscription(subscription())?;
+        let subscription_value = storage
+            .subscriptions
+            .get(stored.id.0.to_be_bytes())?
+            .context("missing raw subscription value")?;
+        anyhow::ensure!(RecordCipher::is_encrypted(&subscription_value));
+        anyhow::ensure!(
+            !subscription_value
+                .windows(b"device1".len())
+                .any(|window| window == b"device1")
+        );
+
+        let destination = subscription().destination_id();
+        storage.begin_confirmation(99, &destination, b"pending-device1".to_vec())?;
+        let confirmation_value = storage
+            .meta
+            .get(confirmation_key(99))?
+            .context("missing raw confirmation value")?;
+        anyhow::ensure!(RecordCipher::is_encrypted(&confirmation_value));
+        anyhow::ensure!(storage.confirmation_record(99)? == Some(b"pending-device1".to_vec()));
+        Ok(())
+    }
+
+    #[test]
+    fn startup_migrates_legacy_plaintext_and_rejects_the_wrong_key() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let stored = {
+            let storage = FjallStorage::open_with_key(directory.path(), [7; 32])?;
+            let stored = storage.store_subscription(subscription())?;
+            storage
+                .subscriptions
+                .insert(stored.id.0.to_be_bytes(), encode(&stored)?)?;
+            storage.persist()?;
+            stored
+        };
+
+        {
+            let storage = FjallStorage::open_with_key(directory.path(), [7; 32])?;
+            let value = storage
+                .subscriptions
+                .get(stored.id.0.to_be_bytes())?
+                .context("missing migrated subscription")?;
+            anyhow::ensure!(RecordCipher::is_encrypted(&value));
+        }
+
+        anyhow::ensure!(FjallStorage::open_with_key(directory.path(), [8; 32]).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn empty_recovery_scans_return_no_work() -> Result<()> {
         let directory = tempfile::tempdir()?;
         let storage = FjallStorage::open(directory.path())?;
@@ -2319,23 +2489,25 @@ mod tests {
     }
 
     #[test]
-    fn deactivation_removes_compiled_record_and_postings() -> Result<()> {
+    fn deletion_removes_subscription_indexes_compiled_record_and_postings() -> Result<()> {
         let directory = tempfile::tempdir()?;
         let storage = FjallStorage::open(directory.path())?;
         let stored = storage.store_subscription(subscription())?;
-        let compiled = storage
+        storage
             .compiled_subscription(stored.id)?
             .context("missing compiled subscription")?;
         anyhow::ensure!(!storage.postings.is_empty()?);
 
-        anyhow::ensure!(storage.deactivate_subscription(stored.id)?);
+        anyhow::ensure!(storage.delete_subscription(stored.id)?);
         anyhow::ensure!(storage.compiled_subscription(stored.id)?.is_none());
         anyhow::ensure!(storage.postings.is_empty()?);
-        let inactive = storage
-            .stored_subscription(stored.id)?
-            .context("missing subscription tombstone")?;
-        anyhow::ensure!(!inactive.active);
-        anyhow::ensure!(inactive.generation > compiled.generation);
+        anyhow::ensure!(storage.stored_subscription(stored.id)?.is_none());
+        anyhow::ensure!(
+            storage
+                .subscriptions_by_destination
+                .get(destination_key(&stored.subscription))?
+                .is_none()
+        );
         Ok(())
     }
 

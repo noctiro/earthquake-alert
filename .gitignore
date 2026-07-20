@@ -1,5 +1,6 @@
 # Rust 编译产物
 target
+.tools
 
 # 数据库
 data

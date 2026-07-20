@@ -44,9 +44,17 @@ impl PruneStats {
 }
 
 impl Storage {
+    #[cfg(any(test, feature = "benchmarks"))]
     pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_key(path, [7; 32])
+    }
+
+    pub(crate) fn open_with_key(
+        path: impl AsRef<Path>,
+        data_encryption_key: [u8; 32],
+    ) -> Result<Self> {
         Ok(Self {
-            inner: FjallStorage::open(path)?,
+            inner: FjallStorage::open_with_key(path, data_encryption_key)?,
         })
     }
 

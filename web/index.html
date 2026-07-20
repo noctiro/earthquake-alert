@@ -280,6 +280,35 @@
       pointer-events: none;
     }
     .map-mode.is-selecting { color: var(--info); border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); }
+    .location-search {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 78px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .location-search input { min-width: 0; }
+    .location-search input { height: 42px; }
+    .location-search button { height: 42px; }
+    .location-search-results {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 10px;
+    }
+    .location-search-results[hidden] { display: none; }
+    .location-search-result {
+      display: grid;
+      gap: 3px;
+      width: 100%;
+      height: auto;
+      min-height: 54px;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+      text-align: left;
+    }
+    .location-search-result strong { color: var(--text); font-size: 13px; line-height: 1.35; }
+    .location-search-result span { color: var(--muted); font-size: 12px; line-height: 1.35; word-break: break-word; }
     .leaflet-control-zoom a,
     .map-tool-button {
       display: grid;
@@ -554,21 +583,16 @@
     button.danger { color: var(--err); background: var(--err-bg); }
     button:disabled { opacity: .65; cursor: wait; }
     .instance-terms-dialog {
-      position: fixed;
-      inset: 0;
-      z-index: 3000;
       width: min(620px, calc(100% - 32px));
       max-height: calc(100dvh - 32px);
-      margin: auto;
       padding: 0;
       border: 1px solid var(--line);
       border-radius: 8px;
       color: var(--text);
       background: var(--panel);
-      box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .62), 0 24px 72px rgba(0, 0, 0, .3);
+      box-shadow: 0 24px 72px rgba(0, 0, 0, .3);
       overflow: auto;
     }
-    .instance-terms-dialog.is-modal { box-shadow: 0 24px 72px rgba(0, 0, 0, .3); }
     .instance-terms-dialog::backdrop { background: rgba(0, 0, 0, .62); }
     .instance-terms-dialog:not([open]) { display: none; }
     .instance-terms-heading {
@@ -681,7 +705,7 @@
     .retry-config.visible { display: block; }
     .form-actions {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(150px, 190px) minmax(220px, 320px);
+      grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) minmax(150px, 190px) minmax(220px, 320px);
       gap: 18px;
       align-items: center;
       margin-top: 24px;
@@ -705,6 +729,9 @@
       h1 { font-size: 28px; line-height: 1.12; }
       .badge { height: 32px; min-height: 32px; padding: 0 10px; font-size: 12px; }
       .identity-grid, .grid, .form-actions { grid-template-columns: 1fr; }
+      .location-search { grid-template-columns: minmax(0, 1fr) 64px; gap: 6px; }
+      .location-search input { padding: 0 10px; }
+      .location-search button { padding: 0 8px; }
       .admin-grid { grid-template-columns: 1fr; }
       .identity-grid { padding-bottom: 16px; margin-bottom: 18px; }
       .workspace { gap: 16px; }
@@ -828,21 +855,9 @@
     {
       const instanceTermsDialog = document.querySelector("#instance-terms-dialog");
       if (instanceTermsDialog) {
-        const dismissButton = instanceTermsDialog.querySelector("#dismiss-instance-terms");
         instanceTermsDialog.addEventListener("cancel", (event) => event.preventDefault());
-        dismissButton?.addEventListener("click", () => {
-          if (typeof instanceTermsDialog.close === "function") instanceTermsDialog.close();
-          else instanceTermsDialog.removeAttribute("open");
-        });
-        if (typeof instanceTermsDialog.showModal === "function") {
-          instanceTermsDialog.removeAttribute("open");
-          try {
-            instanceTermsDialog.showModal();
-            instanceTermsDialog.classList.add("is-modal");
-          } catch {
-            instanceTermsDialog.setAttribute("open", "");
-          }
-        }
+        instanceTermsDialog.querySelector("#dismiss-instance-terms").addEventListener("click", () => instanceTermsDialog.close());
+        instanceTermsDialog.showModal();
       }
     }
   </script>
@@ -913,6 +928,11 @@
                 <h2>监测地点</h2>
                 <span id="location-count">0 / 3</span>
               </div>
+              <form id="location-search" class="location-search">
+                <input id="location-search-query" type="search" maxlength="160" autocomplete="off" placeholder="搜索小区、学校、区县或城市" aria-label="搜索监测地点" />
+                <button id="location-search-submit" type="submit">搜索</button>
+              </form>
+              <div id="location-search-results" class="location-search-results" hidden></div>
               <div class="map-shell">
                 <div id="map"></div>
                 <div id="map-mode" class="map-mode">点击地图添加监测地点</div>
@@ -976,7 +996,8 @@
           </div>
         </div>
         <div class="form-actions">
-          <div id="draft-status" class="form-actions-note">配置草稿会保存在当前浏览器；Bark Key 不会保存在浏览器中。</div>
+          <div id="draft-status" class="form-actions-note">配置草稿和 Bark Key 会保存在当前浏览器。</div>
+          <button id="test-notification" type="button">发送测试通知</button>
           <button class="danger" id="unsubscribe" type="button">取消订阅</button>
           <button class="primary" id="submit" type="submit">保存/覆盖订阅</button>
         </div>
@@ -989,9 +1010,9 @@
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <script src="./config.js"></script>
   <script>
     const api = (window.DISASTER_API_BASE || window.location.origin).replace(/\/$/, "");
-    const instanceTermsAccepted = !document.querySelector("#instance-terms-dialog");
     const storageKey = "disaster_subscription_draft_v3";
     const legacyStorageKey = "disaster_subscription_draft_v2";
     const form = document.querySelector("#subscribe-form");
@@ -1007,6 +1028,10 @@
     const regionEditor = document.querySelector("#region-editor");
     const latInput = document.querySelector("#latitude");
     const lonInput = document.querySelector("#longitude");
+    const locationSearch = document.querySelector("#location-search");
+    const locationSearchQuery = document.querySelector("#location-search-query");
+    const locationSearchSubmit = document.querySelector("#location-search-submit");
+    const locationSearchResults = document.querySelector("#location-search-results");
     const locationsList = document.querySelector("#locations-list");
     const locationCount = document.querySelector("#location-count");
     const locationsSummary = document.querySelector("#locations-summary");
@@ -1025,6 +1050,7 @@
     const toastStack = document.querySelector("#toast-stack");
     const retryConfig = document.querySelector("#retry-config");
     const submit = document.querySelector("#submit");
+    const testNotification = document.querySelector("#test-notification");
     const unsubscribe = document.querySelector("#unsubscribe");
     let locate = null;
     const statusShell = document.querySelector("#status-shell");
@@ -1064,14 +1090,15 @@
     let optionCategories = [];
     let configurationReady = false;
     let subscriptionRequestInFlight = false;
+    let locationSearchInFlight = false;
     let statusRefreshInFlight = false;
     let lastStatusRefreshAt = 0;
     let statusWasOpenOnPointerDown = false;
 
     function setSubscriptionRequestInFlight(inFlight) {
       subscriptionRequestInFlight = inFlight;
-      submit.disabled = inFlight || !configurationReady || !instanceTermsAccepted;
-      submit.title = instanceTermsAccepted ? "" : "实例部署者确认责任声明后才能保存订阅";
+      submit.disabled = inFlight || !configurationReady;
+      testNotification.disabled = inFlight || !configurationReady;
       unsubscribe.disabled = inFlight;
       resetAlertRules.disabled = inFlight || !configurationReady;
       startAddLocation.disabled = inFlight || subscriptionDraft.targets.length >= 3 || uiState.locationMode !== "overview";
@@ -1226,6 +1253,7 @@
       return {
         schema_version: 3,
         bark_url: "",
+        bark_key: "",
         targets: [],
         alerts_by_category: {},
       };
@@ -1348,6 +1376,83 @@
           regionEditor.dataset.animating = "false";
         });
       }
+    }
+
+    function setLocationSearchInFlight(inFlight) {
+      locationSearchInFlight = inFlight;
+      locationSearchSubmit.disabled = inFlight;
+      locationSearchSubmit.textContent = inFlight ? "搜索中" : "搜索";
+    }
+
+    function renderLocationSearchResults(results) {
+      if (!results.length) {
+        locationSearchResults.hidden = true;
+        locationSearchResults.innerHTML = "";
+        return;
+      }
+      locationSearchResults.innerHTML = results.map((result, index) => {
+        const label = String(result.name || result.address || "搜索结果").trim();
+        const address = String(result.address || `${Number(result.latitude).toFixed(4)}, ${Number(result.longitude).toFixed(4)}`).trim();
+        return `
+          <button class="location-search-result" type="button" data-search-result="${escapeHtml(index)}">
+            <strong>${escapeHtml(label)}</strong>
+            <span>${escapeHtml(address)}</span>
+          </button>`;
+      }).join("");
+      locationSearchResults.hidden = false;
+    }
+
+    function limitChars(value, maxChars) {
+      return Array.from(String(value || "").trim()).slice(0, maxChars).join("");
+    }
+
+    async function searchLocation(event) {
+      event.preventDefault();
+      const query = locationSearchQuery.value.trim();
+      if (query.length < 2) return show("搜索地址至少需要 2 个字符", "error");
+      if (locationSearchInFlight) return;
+      setLocationSearchInFlight(true);
+      show("正在搜索地址...", "info");
+      try {
+        const res = await fetch(`${api}/api/geocode?${new URLSearchParams({ q: query })}`);
+        const json = await parseApiResponse(res);
+        if (!res.ok || !json.success || !Array.isArray(json.data)) throw new Error(json.message || "地址搜索失败");
+        locationSearchResults.dataset.results = JSON.stringify(json.data);
+        renderLocationSearchResults(json.data);
+        if (!json.data.length) show("没有找到匹配地址，可点击地图或手动输入坐标", "info");
+      } catch (error) {
+        show(error.message || "地址搜索失败", "error");
+      } finally {
+        setLocationSearchInFlight(false);
+      }
+    }
+
+    function applySearchResult(result) {
+      const latitude = Number(result?.latitude);
+      const longitude = Number(result?.longitude);
+      if (!validCoordinate(latitude, longitude)) return show("搜索结果坐标无效", "error");
+      if (uiState.locationMode === "overview" && subscriptionDraft.targets.length >= 3) return show("最多添加 3 个监测地点", "error");
+      if (uiState.locationMode === "overview") startAddingLocation();
+      const target = activeTarget();
+      if (!target) return;
+      cancelReverseGeocode(target.id);
+      target.point.latitude = latitude.toFixed(4);
+      target.point.longitude = longitude.toFixed(4);
+      target.label = limitChars(result.name || result.address || target.label || "搜索结果", 80);
+      target.region.province = limitChars(result.province, 80);
+      target.region.city = limitChars(result.city, 80);
+      target.region.district = limitChars(result.district, 80);
+      nextRevision(targetCoordinateRevisions, target.id);
+      nextRevision(targetRegionRevisions, target.id);
+      setMapView(latitude, longitude);
+      renderLocations();
+      renderLocationEditor();
+      if (!targetRegion(target)) scheduleReverseGeocode(target.id, 0);
+      persistDraft();
+      locationSearchResults.hidden = true;
+      locationSearchResults.innerHTML = "";
+      locationSearchResults.dataset.results = "[]";
+      show("已选择搜索结果，可确认后保存地点", "success");
     }
 
     function cancelReverseGeocode(targetId) {
@@ -2029,6 +2134,7 @@
       return {
         schema_version: 3,
         bark_url: subscriptionDraft.bark_url,
+        bark_key: barkInput.value.trim(),
         targets: subscriptionDraft.targets.map((target) => ({
           id: target.id,
           label: String(target.label || ""),
@@ -2051,10 +2157,8 @@
     }
 
     function updateDraftStatus() {
-      if (!instanceTermsAccepted) {
-        draftStatus.textContent = "当前实例未确认部署责任，不能新增或覆盖订阅；仍可取消已有订阅。";
-      } else if (!lastSubmittedSignature) {
-        draftStatus.textContent = "配置草稿保存在当前浏览器；Bark Key 不会保存。";
+      if (!lastSubmittedSignature) {
+        draftStatus.textContent = "配置草稿和 Bark Key 会保存在当前浏览器。";
       } else if (draftSignature() === lastSubmittedSignature && currentDestinationIdentity() === lastSubmittedIdentity) {
         draftStatus.textContent = "本浏览器中的配置已提交。";
       } else {
@@ -2087,6 +2191,10 @@
       const source = current?.schema_version === 3 ? current : legacy || {};
       const draft = createEmptyDraft();
       draft.bark_url = typeof source.bark_url === "string" ? source.bark_url : "";
+      draft.bark_key = typeof source.bark_key === "string" && /^[A-Za-z0-9]{1,64}$/.test(source.bark_key)
+        ? source.bark_key
+        : "";
+      barkInput.value = draft.bark_key;
       const legacyCurrent = source.current && typeof source.current === "object" ? source.current : null;
       const sourceTargets = Array.isArray(source.targets) && source.targets.length
         ? source.targets
@@ -2252,6 +2360,15 @@
       );
     }
 
+    locationSearch.addEventListener("submit", searchLocation);
+    locationSearchResults.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-search-result]");
+      if (!button) return;
+      const results = safeJson(locationSearchResults.dataset.results) || [];
+      const result = results[Number(button.dataset.searchResult)];
+      if (result) applySearchResult(result);
+    });
+
     editRegion.setAttribute("aria-controls", "region-editor");
     editRegion.setAttribute("aria-expanded", "false");
     editRegion.addEventListener("click", () => setRegionEditorOpen(regionEditor.hidden));
@@ -2310,7 +2427,7 @@
       subscriptionDraft.bark_url = barkUrlInput.value;
       persistDraft();
     });
-    barkInput.addEventListener("input", updateDraftStatus);
+    barkInput.addEventListener("input", persistDraft);
     retryConfig.addEventListener("click", () => {
       show("正在重新加载订阅配置...", "info");
       initializeConfiguration(subscriptionDraft);
@@ -2326,6 +2443,37 @@
       renderDisasterGroups();
       persistDraft();
       show("预警规则已恢复默认设置", "success");
+    });
+
+    testNotification.addEventListener("click", async () => {
+      if (!configurationReady) return show("订阅配置尚未加载完成", "error");
+      const barkID = barkInput.value.trim();
+      if (!/^[A-Za-z0-9]{1,64}$/.test(barkID)) return show("请填写有效的 Bark Key", "error");
+      const barkUrl = barkUrlInput.value;
+      if (!barkUrls.includes(barkUrl)) return show("请选择有效的 Bark URL", "error");
+      if (subscriptionRequestInFlight) return;
+      setSubscriptionRequestInFlight(true);
+      testNotification.textContent = "发送中...";
+      show("正在发送测试通知...", "info");
+      try {
+        const res = await fetch(api + "/api/test-notification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination: { type: "bark", base_url: barkUrl, device_key: barkID },
+            level: "timeSensitive",
+          }),
+        });
+        const json = await parseApiResponse(res);
+        if (!res.ok || !json.success) throw new Error(json.message || "测试通知发送失败");
+        show("测试通知已发送，请查看 iPhone", "success");
+        refreshStatus();
+      } catch (error) {
+        show(error.message || "测试通知发送失败", "error");
+      } finally {
+        testNotification.textContent = "发送测试通知";
+        setSubscriptionRequestInFlight(false);
+      }
     });
 
     disasterGroupsEl.addEventListener("click", (event) => {
@@ -2444,7 +2592,6 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!instanceTermsAccepted) return show("当前实例尚未确认部署责任，不能新增或覆盖订阅", "error");
       if (!configurationReady) return show("订阅配置尚未加载完成", "error");
       if (alertEntry("earthquake_warning")?.enabled && !commitBands()) return show("请修正通知级别规则", "error");
       const alertRuleError = validateAlertRules();

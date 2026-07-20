@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use disaster_alert::migration_support::{MigrationStorage, Subscription};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -7,6 +8,7 @@ use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use zeroize::Zeroizing;
 
 const SUBSCRIPTION_PREFIX: &[u8] = b"sub:";
 const MAX_SUBSCRIPTION_BYTES: usize = 32 * 1024;
@@ -28,7 +30,24 @@ struct InvalidRecord {
 
 fn main() -> Result<()> {
     let (source, target) = migration_paths()?;
-    migrate(&source, &target)
+    migrate(&source, &target, data_encryption_key_from_env()?)
+}
+
+fn data_encryption_key_from_env() -> Result<[u8; 32]> {
+    let encoded =
+        Zeroizing::new(env::var("DATA_ENCRYPTION_KEY").context("DATA_ENCRYPTION_KEY is required")?);
+    let decoded = Zeroizing::new(
+        URL_SAFE_NO_PAD
+            .decode(encoded.trim().as_bytes())
+            .context("DATA_ENCRYPTION_KEY must be URL-safe base64 without padding")?,
+    );
+    anyhow::ensure!(
+        decoded.len() == 32,
+        "DATA_ENCRYPTION_KEY must decode to exactly 32 bytes"
+    );
+    let mut key = [0_u8; 32];
+    key.copy_from_slice(&decoded);
+    Ok(key)
 }
 
 fn migration_paths() -> Result<(PathBuf, PathBuf)> {
@@ -56,7 +75,7 @@ fn migration_paths_from(
     Ok((PathBuf::from(source), PathBuf::from(target)))
 }
 
-fn migrate(source: &Path, target: &Path) -> Result<()> {
+fn migrate(source: &Path, target: &Path, data_encryption_key: [u8; 32]) -> Result<()> {
     anyhow::ensure!(source.is_dir(), "sled source must be an existing directory");
     anyhow::ensure!(
         !target.exists(),
@@ -83,7 +102,7 @@ fn migrate(source: &Path, target: &Path) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create target parent {}", parent.display()))?;
     }
-    let target_storage = MigrationStorage::open(&partial)
+    let target_storage = MigrationStorage::open(&partial, data_encryption_key)
         .with_context(|| format!("failed to open Fjall partial {}", partial.display()))?;
     target_storage.bind_source(snapshot.fingerprint, partial_existed)?;
     let mut imported = 0usize;
@@ -105,7 +124,7 @@ fn migrate(source: &Path, target: &Path) -> Result<()> {
     target_storage.flush()?;
     drop(target_storage);
 
-    let report = verify_snapshot(&snapshot, &partial)?;
+    let report = verify_snapshot(&snapshot, &partial, data_encryption_key)?;
     sync_tree(&partial)?;
     fs::rename(&partial, target).with_context(|| {
         format!(
@@ -130,7 +149,11 @@ struct VerifyReport {
     digest: [u8; 32],
 }
 
-fn verify_snapshot(source: &SourceSnapshot, target: &Path) -> Result<VerifyReport> {
+fn verify_snapshot(
+    source: &SourceSnapshot,
+    target: &Path,
+    data_encryption_key: [u8; 32],
+) -> Result<VerifyReport> {
     anyhow::ensure!(
         target.is_dir(),
         "Fjall target must be an existing directory"
@@ -139,7 +162,7 @@ fn verify_snapshot(source: &SourceSnapshot, target: &Path) -> Result<VerifyRepor
         source.invalid.is_empty(),
         "source contains invalid subscriptions"
     );
-    let target = MigrationStorage::open(target)
+    let target = MigrationStorage::open(target, data_encryption_key)
         .with_context(|| format!("failed to open Fjall target {}", target.display()))?;
     target.verify_source(source.fingerprint)?;
     target.verify_postings()?;
@@ -556,9 +579,9 @@ mod tests {
         source.insert(b"incident:ignored", b"legacy")?;
         source.flush()?;
         drop(source);
-        migrate(&source_path, &target_path)?;
+        migrate(&source_path, &target_path, [7; 32])?;
         let snapshot = load_source_read_only(&source_path)?;
-        let report = verify_snapshot(&snapshot, &target_path)?;
+        let report = verify_snapshot(&snapshot, &target_path, [7; 32])?;
         anyhow::ensure!(snapshot.subscriptions.len() == 1);
         anyhow::ensure!(report.digest == snapshot.digest);
         Ok(())
@@ -571,7 +594,7 @@ mod tests {
         let target_path = directory.path().join("new-fjall");
         fs::write(&source_path, b"not a sled directory")?;
 
-        anyhow::ensure!(migrate(&source_path, &target_path).is_err());
+        anyhow::ensure!(migrate(&source_path, &target_path, [7; 32]).is_err());
         anyhow::ensure!(!target_path.exists());
         Ok(())
     }
@@ -588,11 +611,13 @@ mod tests {
         drop(source);
 
         let partial = sibling_with_suffix(&target_path, ".partial");
-        drop(MigrationStorage::open(&partial)?);
-        migrate(&source_path, &target_path)?;
+        drop(MigrationStorage::open(&partial, [7; 32])?);
+        migrate(&source_path, &target_path, [7; 32])?;
 
         let snapshot = load_source_read_only(&source_path)?;
-        anyhow::ensure!(verify_snapshot(&snapshot, &target_path)?.digest == snapshot.digest);
+        anyhow::ensure!(
+            verify_snapshot(&snapshot, &target_path, [7; 32])?.digest == snapshot.digest
+        );
         Ok(())
     }
 
@@ -612,7 +637,7 @@ mod tests {
         fs::create_dir(&interrupted)?;
         fs::write(interrupted.join("incomplete"), b"partial copy")?;
 
-        migrate(&source_path, &target_path)?;
+        migrate(&source_path, &target_path, [7; 32])?;
 
         anyhow::ensure!(target_path.is_dir());
         anyhow::ensure!(!interrupted.exists());
@@ -628,7 +653,7 @@ mod tests {
         source.insert(b"sub:1:x:key", b"not-json")?;
         source.flush()?;
         drop(source);
-        anyhow::ensure!(migrate(&source_path, &target_path).is_err());
+        anyhow::ensure!(migrate(&source_path, &target_path, [7; 32]).is_err());
         anyhow::ensure!(sibling_with_suffix(&target_path, ".quarantine.jsonl").is_file());
         anyhow::ensure!(!target_path.exists());
         Ok(())

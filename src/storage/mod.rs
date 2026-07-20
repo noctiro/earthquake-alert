@@ -1,8 +1,10 @@
 mod codec;
+mod encryption;
 mod facade;
 mod fjall;
 
 pub(crate) use codec::{decode_record, encode_record};
+pub(crate) use encryption::RecordCipher;
 pub(crate) use facade::{BacklogCounts, RetentionPolicy, Storage};
 pub(crate) use fjall::{FjallStorage, InboxItem, IncidentResolutionCapacity};
 

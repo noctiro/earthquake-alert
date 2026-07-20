@@ -114,14 +114,7 @@ impl SubscriptionManager {
                 Err(DeleteSubscriptionError::NotFound)
             };
         };
-        if !record.active {
-            return if self.remove_confirmation_for_destination(destination)? {
-                Ok(())
-            } else {
-                Err(DeleteSubscriptionError::NotFound)
-            };
-        }
-        if !self.storage.deactivate_subscription(record.id)? {
+        if !self.storage.delete_subscription(record.id)? {
             return Err(DeleteSubscriptionError::NotFound);
         }
         Ok(())

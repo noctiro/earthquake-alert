@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::env;
 use std::fmt;
 use std::path::PathBuf;
@@ -7,6 +8,7 @@ use zeroize::Zeroizing;
 
 const DEFAULT_DB_PATH: &str = "./data/disaster-alert.fjall";
 const LEGACY_DEFAULT_DB_PATH: &str = "./data/disaster-alert.db";
+pub(crate) const BARK_API_BASE_URL: &str = "https://api.day.app";
 
 /// Load configuration values from `.env` in the current working directory.
 /// Existing process environment variables take precedence.
@@ -28,8 +30,7 @@ pub(crate) struct Config {
     pub(crate) shutdown_timeout_seconds: u64,
     pub(crate) allowed_origins: Vec<String>,
     pub(crate) db_path: String,
-    /// Ordered, normalized Bark server roots.
-    pub(crate) bark_url_allowlist: Vec<String>,
+    pub(crate) data_encryption_key: SecretBytes,
     pub(crate) bark_sound: Option<String>,
     pub(crate) bark_volume: u8,
     pub(crate) bark_group: String,
@@ -40,6 +41,8 @@ pub(crate) struct Config {
     pub(crate) delivery_ledger_retention_days: u64,
     pub(crate) operation_retention_days: u64,
     pub(crate) notification_context_retention_days: u64,
+    pub(crate) wolfx_websocket_url: String,
+    pub(crate) fanstudio_websocket_url: String,
     pub(crate) reconnect_min_seconds: u64,
     pub(crate) reconnect_max_seconds: u64,
     pub(crate) push_updates: bool,
@@ -70,7 +73,7 @@ impl Config {
             shutdown_timeout_seconds: env_parse("SHUTDOWN_TIMEOUT_SECONDS", 15)?,
             allowed_origins: env_list("ALLOWED_ORIGINS"),
             db_path: configured_db_path()?,
-            bark_url_allowlist: bark_url_allowlist()?,
+            data_encryption_key: required_env_key("DATA_ENCRYPTION_KEY")?,
             bark_sound: env::var("BARK_SOUND")
                 .ok()
                 .map(|value| value.trim().to_string())
@@ -87,6 +90,11 @@ impl Config {
                 "NOTIFICATION_CONTEXT_RETENTION_DAYS",
                 365,
             )?,
+            wolfx_websocket_url: env_string("WOLFX_WEBSOCKET_URL", "wss://ws-api.wolfx.jp/all_eew"),
+            fanstudio_websocket_url: env_string(
+                "FANSTUDIO_WEBSOCKET_URL",
+                "wss://ws.fanstudio.tech/all",
+            ),
             reconnect_min_seconds: env_parse("RECONNECT_MIN_SECONDS", 1)?,
             reconnect_max_seconds: env_parse("RECONNECT_MAX_SECONDS", 30)?,
             push_updates: env_bool("PUSH_UPDATES", false)?,
@@ -112,6 +120,12 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
+        validate_websocket_url("WOLFX_WEBSOCKET_URL", &self.wolfx_websocket_url, None)?;
+        validate_websocket_url(
+            "FANSTUDIO_WEBSOCKET_URL",
+            &self.fanstudio_websocket_url,
+            Some("/all"),
+        )?;
         if self.reconnect_min_seconds == 0 {
             bail!("RECONNECT_MIN_SECONDS must be greater than 0");
         }
@@ -154,9 +168,6 @@ impl Config {
         }) {
             bail!("BARK_SOUND must contain 1..=64 URL-safe ASCII characters");
         }
-        if self.bark_url_allowlist.is_empty() {
-            bail!("BARK_URL_ALLOWLIST must contain at least one URL");
-        }
         validate_public_base_url("ALERT_DETAIL_BASE_URL", &self.alert_detail_base_url)?;
         if self.incident_retention_days == 0 || self.incident_retention_days > 3_650 {
             bail!("INCIDENT_RETENTION_DAYS must be in 1..=3650");
@@ -183,6 +194,20 @@ impl Config {
 }
 
 pub(crate) struct SecretString(Zeroizing<String>);
+
+pub(crate) struct SecretBytes(Zeroizing<[u8; 32]>);
+
+impl SecretBytes {
+    pub(crate) fn expose(&self) -> [u8; 32] {
+        *self.0
+    }
+}
+
+impl fmt::Debug for SecretBytes {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("[REDACTED]")
+    }
+}
 
 impl SecretString {
     pub(crate) fn expose(&self) -> &str {
@@ -239,26 +264,21 @@ fn validate_http_url(name: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-fn bark_url_allowlist() -> Result<Vec<String>> {
-    let raw = env::var("BARK_URL_ALLOWLIST").unwrap_or_else(|_| "https://api.day.app".to_string());
-    let mut urls = Vec::new();
-
-    for entry in raw
-        .split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+fn validate_websocket_url(name: &str, value: &str, required_path: Option<&str>) -> Result<()> {
+    let parsed = Url::parse(value).with_context(|| format!("invalid {name}"))?;
+    if !matches!(parsed.scheme(), "ws" | "wss")
+        || parsed.host_str().is_none()
+        || parsed.username() != ""
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
     {
-        let normalized = normalize_bark_url(entry)
-            .with_context(|| format!("invalid BARK_URL_ALLOWLIST entry {entry:?}"))?;
-        if !urls.contains(&normalized) {
-            urls.push(normalized);
-        }
+        bail!("{name} must be a WS(S) URL without credentials, query, or fragment");
     }
-
-    if urls.is_empty() {
-        bail!("BARK_URL_ALLOWLIST must contain at least one URL");
+    if required_path.is_some_and(|path| parsed.path() != path) {
+        bail!("{name} must use the /all endpoint");
     }
-    Ok(urls)
+    Ok(())
 }
 
 pub(crate) fn normalize_bark_url(value: &str) -> Result<String> {
@@ -317,6 +337,26 @@ fn required_env_secret(name: &str) -> Result<SecretString> {
     Ok(SecretString(trimmed))
 }
 
+fn required_env_key(name: &str) -> Result<SecretBytes> {
+    let encoded = Zeroizing::new(required_env_string(name)?);
+    parse_key(name, &encoded)
+}
+
+fn parse_key(name: &str, encoded: &str) -> Result<SecretBytes> {
+    let decoded = Zeroizing::new(
+        URL_SAFE_NO_PAD
+            .decode(encoded.as_bytes())
+            .with_context(|| format!("{name} must be URL-safe base64 without padding"))?,
+    );
+    anyhow::ensure!(
+        decoded.len() == 32,
+        "{name} must decode to exactly 32 bytes"
+    );
+    let mut key = Zeroizing::new([0_u8; 32]);
+    key.copy_from_slice(&decoded);
+    Ok(SecretBytes(key))
+}
+
 fn env_list(name: &str) -> Vec<String> {
     env::var(name)
         .unwrap_or_default()
@@ -356,7 +396,17 @@ fn env_bool(name: &str, default: bool) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_bark_url, validate_public_base_url};
+    use super::{normalize_bark_url, parse_key, validate_public_base_url};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    #[test]
+    fn database_encryption_key_requires_exactly_32_bytes() -> anyhow::Result<()> {
+        let encoded = URL_SAFE_NO_PAD.encode([7_u8; 32]);
+        anyhow::ensure!(parse_key("TEST_KEY", &encoded)?.expose() == [7; 32]);
+        anyhow::ensure!(parse_key("TEST_KEY", &URL_SAFE_NO_PAD.encode([7_u8; 31])).is_err());
+        anyhow::ensure!(parse_key("TEST_KEY", "not base64!").is_err());
+        Ok(())
+    }
 
     #[test]
     fn normalizes_supported_bark_urls() -> anyhow::Result<()> {

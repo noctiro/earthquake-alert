@@ -11,9 +11,22 @@ const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_CACHE_ENTRIES: usize = 1_024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+const MAX_SEARCH_QUERY_CHARS: usize = 160;
+const MAX_SEARCH_RESULTS: usize = 5;
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ReverseGeocodeResult {
+    pub(crate) province: String,
+    pub(crate) city: String,
+    pub(crate) district: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct GeocodeSearchResult {
+    pub(crate) name: String,
+    pub(crate) address: String,
+    pub(crate) latitude: f64,
+    pub(crate) longitude: f64,
     pub(crate) province: String,
     pub(crate) city: String,
     pub(crate) district: String,
@@ -56,7 +69,17 @@ struct NominatimResponse {
     error: Option<String>,
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Deserialize)]
+struct NominatimSearchItem {
+    display_name: Option<String>,
+    name: Option<String>,
+    lat: String,
+    lon: String,
+    #[serde(default)]
+    address: NominatimAddress,
+}
+
+#[derive(Clone, Default, Deserialize)]
 struct NominatimAddress {
     state: Option<String>,
     province: Option<String>,
@@ -144,9 +167,58 @@ impl ReverseGeocoder {
         enabled.cache(key, value.clone()).await;
         Ok(value)
     }
+
+    pub(crate) async fn search(&self, query: &str) -> Result<Vec<GeocodeSearchResult>> {
+        let enabled = self
+            .enabled
+            .as_ref()
+            .context("reverse geocoding is disabled")?;
+        let query = query.trim();
+        anyhow::ensure!(query.chars().count() >= 2, "search query is too short");
+        anyhow::ensure!(
+            query.chars().count() <= MAX_SEARCH_QUERY_CHARS,
+            "search query is too long"
+        );
+        enabled.acquire_request_slot().await;
+
+        let mut url = enabled.search_endpoint();
+        url.query_pairs_mut()
+            .append_pair("format", "jsonv2")
+            .append_pair("addressdetails", "1")
+            .append_pair("accept-language", "zh-CN,zh,en")
+            .append_pair("limit", &MAX_SEARCH_RESULTS.to_string())
+            .append_pair("q", query);
+        let response = enabled
+            .client
+            .get(url)
+            .send()
+            .await
+            .context("geocoding search request failed")?
+            .error_for_status()
+            .context("geocoding search service returned an error")?;
+        let items = limited_search_response_json(response).await?;
+        Ok(items
+            .into_iter()
+            .filter_map(NominatimSearchItem::into_result)
+            .take(MAX_SEARCH_RESULTS)
+            .collect())
+    }
 }
 
 impl EnabledGeocoder {
+    fn search_endpoint(&self) -> Url {
+        let mut url = self.endpoint.clone();
+        let path = url.path().trim_end_matches('/');
+        if path.ends_with("/reverse") {
+            let search_path = format!("{}/search", path.trim_end_matches("/reverse"));
+            url.set_path(&search_path);
+        } else {
+            url.set_path("/search");
+        }
+        url.set_query(None);
+        url
+    }
+
     fn coordinate_lock(&self, key: CoordinateKey) -> Arc<Mutex<()>> {
         let mut locks = self
             .coordinate_locks
@@ -237,6 +309,29 @@ async fn limited_response_json(mut response: reqwest::Response) -> Result<Nomina
     serde_json::from_slice(&body).context("invalid reverse geocoding response")
 }
 
+async fn limited_search_response_json(
+    mut response: reqwest::Response,
+) -> Result<Vec<NominatimSearchItem>> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+    {
+        bail!("geocoding search response exceeded size limit");
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .context("failed to read geocoding search response")?
+    {
+        if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+            bail!("geocoding search response exceeded size limit");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).context("invalid geocoding search response")
+}
+
 impl CoordinateKey {
     fn new(latitude: f64, longitude: f64) -> Result<Self> {
         if !latitude.is_finite()
@@ -267,6 +362,52 @@ impl NominatimAddress {
             ]),
         }
     }
+}
+
+impl NominatimSearchItem {
+    fn into_result(self) -> Option<GeocodeSearchResult> {
+        let latitude = self.lat.parse::<f64>().ok()?;
+        let longitude = self.lon.parse::<f64>().ok()?;
+        if !(-90.0..=90.0).contains(&latitude) || !(-180.0..=180.0).contains(&longitude) {
+            return None;
+        }
+        let region = self.address.clone().into_result();
+        let name = self
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| short_display_name(self.display_name.as_deref()))
+            .or_else(|| {
+                [
+                    region.district.as_str(),
+                    region.city.as_str(),
+                    region.province.as_str(),
+                ]
+                .into_iter()
+                .find(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+            })
+            .unwrap_or_else(|| "搜索结果".to_string());
+        Some(GeocodeSearchResult {
+            name,
+            address: self.display_name.unwrap_or_default(),
+            latitude,
+            longitude,
+            province: region.province,
+            city: region.city,
+            district: region.district,
+        })
+    }
+}
+
+fn short_display_name(value: Option<&str>) -> Option<String> {
+    value
+        .and_then(|display| display.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn first_non_empty<const N: usize>(values: [Option<String>; N]) -> String {
